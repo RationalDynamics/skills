@@ -61,17 +61,22 @@ project-slug, so a worktree name fragment selects it. To find a session id, run
    times. The main loop writes identical final-usage copies; subagents/workflows
    write **streaming partials** whose `output_tokens` grow across copies
    (`1 → 3 → 265`). The tool keys on `(message.id, requestId)` and keeps the
-   record with the **maximum** `output_tokens` (the final one). Summing raw
-   records overcounts ~2–3×; keeping the *first* partial undercounts. This
-   matches `ccusage`'s message-id dedup.
+   record with the **maximum** `output_tokens` (the final one — the usage
+   actually billed). Summing raw records overcounts ~2–3×; keeping the *first*
+   partial undercounts. The tool uses the **same dedup key** as `ccusage`, but
+   keep-max is its own rule (not a verified copy of ccusage's): they agree on
+   main-loop-only sessions (the copies are identical), but on subagent /
+   workflow-heavy sessions keep-max can read **materially higher** — ~31%
+   measured on one workflow-heavy session — because it takes the final streamed
+   usage rather than the first partial. Keep-max is the billed number, so treat
+   `ccusage` as an independent cross-check, **not** a guaranteed match.
 
 2. **Per-model pricing.** A session/day often mixes opus + sonnet + haiku, and
    cache-read tokens dominate volume, so pricing everything at Opus rates
    overstates cost. `PRICES` is keyed by model family (substring match on the
-   model id) and cost is summed per family.
-
-After both fixes, totals reconcile with `npx ccusage@latest` to within
-live-session drift.
+   model id) and cost is summed per family. An unrecognized model is priced at
+   `DEFAULT_FAMILY` rates and warned about once on stderr (so the $ column never
+   silently misprices a new model).
 
 ## Pricing (edit `PRICES` to your contract)
 
@@ -95,13 +100,17 @@ regardless. Cache-write 5m = 1.25× input, cache-write 1h = 2× input, cache-rea
 - **cache-read dominates.** Long sessions re-read accumulated context every turn;
   at 0.1× it's still usually the largest single cost line. `input (fresh)` is
   only the uncached remainder.
-- **Wall-clock = first→last timestamp**, so it includes idle/think time, not
-  just compute. A workflow that ran concurrently shows its own shorter span; the
-  session total stays the elapsed wall-clock.
+- **Wall-clock** for a single session is its first→last timestamp, so it
+  includes idle/think time, not just compute. In `--by-worktree` the `min`
+  column is the **sum of each session's own span**, not one calendar span across
+  the worktree — otherwise a worktree used on two different days would report
+  the days between them as "time".
 - **Live sessions keep growing** — a report on the *current* session rises every
   turn. Snapshot after sessions close for a stable comparison.
 - **Cross-check:** `npx ccusage@latest` parses the same JSONL (daily/session
-  views) and is a good independent sanity check on token totals.
+  views). It's a good independent sanity check, but expect token totals to
+  *differ on subagent/workflow-heavy sessions* (see keep-max above) — they're
+  not guaranteed to match.
 
 ## Extending
 
