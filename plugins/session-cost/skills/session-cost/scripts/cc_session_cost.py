@@ -12,8 +12,17 @@ Dedup (the part that makes the numbers trustworthy):
   loop writes identical final-usage copies; subagents/workflows write STREAMING
   PARTIALS whose output grows across copies (1 -> 3 -> 265 ...). So we key on
   (message.id, requestId) and keep the record with the MAX output_tokens — the
-  final, complete one. Summing raw records double-counts (2-3x); keeping the
-  first partial under-counts. This matches `ccusage`'s message-id dedup.
+  final, complete one (= the usage actually billed). Summing raw records
+  double-counts (2-3x); keeping the first partial under-counts.
+
+  We use the same dedup KEY as `ccusage`, but keep-max is our own rule, not a
+  verified copy of ccusage's. On main-loop-only sessions the duplicate copies
+  are identical, so keep-max == keep-first and the two agree. On subagent /
+  workflow-heavy sessions they can diverge materially — keep-max measured ~31%
+  higher than keep-first on one workflow-heavy session, because it takes the
+  final streamed usage rather than the first partial. Keep-max is the billed
+  number, so it's the right one; just treat `ccusage` as an independent
+  cross-check, NOT a guaranteed match.
 
 Token counts are then exact; only the $ depends on the (editable) PRICES table.
 
@@ -49,12 +58,25 @@ DEFAULT_FAMILY = "opus"
 
 SUMFIELDS = ("turns", "input", "output", "cache_read", "cw5", "cw1h", "tool_uses")
 
+_WARNED_UNKNOWN_MODELS: set[str] = set()
+
 
 def _family(model):
     m = (model or "").lower()
     for fam in PRICES:
         if fam in m:
             return fam
+    # Unknown model: priced at DEFAULT_FAMILY rates. Warn once per distinct id
+    # (to stderr, so it never corrupts the report on stdout) — silent
+    # mispricing of a new/cheaper model is exactly the kind of error that
+    # erodes trust in the dollar column.
+    if model and model != "?" and model not in _WARNED_UNKNOWN_MODELS:
+        _WARNED_UNKNOWN_MODELS.add(model)
+        print(
+            f"warning: unknown model {model!r}; pricing at {DEFAULT_FAMILY} rates "
+            f"(add a PRICES entry to fix the $ column)",
+            file=sys.stderr,
+        )
     return DEFAULT_FAMILY
 
 
@@ -161,6 +183,13 @@ def minutes(a):
     return 0.0
 
 
+def _span_min(span):
+    """Minutes between the first and last timestamp of a [first, last] pair."""
+    if span[0] and span[1]:
+        return (span[1] - span[0]).total_seconds() / 60
+    return 0.0
+
+
 def session_files(main_jsonl):
     sub = main_jsonl[:-6]
     files = [main_jsonl]
@@ -220,7 +249,7 @@ def cmd_session(arg):
 
 def cmd_by_worktree(filters):
     rows = []
-    grand_store, grand_span = {}, [None, None]
+    grand_store, grand_min = {}, 0.0
     for proj in sorted(glob.glob(os.path.join(PROJECTS, "*"))):
         if not os.path.isdir(proj):
             continue
@@ -230,29 +259,36 @@ def cmd_by_worktree(filters):
         sessions = sorted(glob.glob(os.path.join(proj, "*.jsonl")))
         if not sessions:
             continue
-        store, span = {}, [None, None]
+        # Tokens dedup across the whole worktree (shared store); wall-clock is
+        # the SUM of each session's own first->last span — NOT one span across
+        # all sessions, which would count the idle days between them.
+        store, wt_min = {}, 0.0
         for s in sessions:
+            sess_span = [None, None]
             for f in session_files(s):
-                collect(f, store, span)
-                collect(f, grand_store, grand_span)
-        a = finalize(store, span)
-        a["sessions"] = len(sessions)
+                collect(f, store, sess_span)
+                collect(f, grand_store, [None, None])
+            wt_min += _span_min(sess_span)
+        grand_min += wt_min
+        a = finalize(store, [None, None])
+        a["sessions"], a["minutes"] = len(sessions), wt_min
         rows.append((worktree_label(slug), a))
     rows.sort(key=lambda r: cost(r[1]), reverse=True)
-    grand = finalize(grand_store, grand_span)
+    grand = finalize(grand_store, [None, None])
     w = 42
-    print("=" * (w + 56))
+    print("=" * (w + 57))
     print(f"{'WORKTREE':{w}} {'sess':>4} {'turns':>6} {'output':>10} "
-          f"{'cacheRead':>12} {'min':>5} {'cost$':>9}")
-    print("-" * (w + 56))
+          f"{'cacheRead':>12} {'min':>6} {'cost$':>9}")
+    print("-" * (w + 57))
     for label, a in rows:
         print(f"{label[:w]:{w}} {a['sessions']:>4} {a['turns']:>6} {a['output']:>10,} "
-              f"{a['cache_read']:>12,} {minutes(a):>5.0f} {cost(a):>9,.2f}")
-    print("-" * (w + 56))
+              f"{a['cache_read']:>12,} {a['minutes']:>6.0f} {cost(a):>9,.2f}")
+    print("-" * (w + 57))
     print(f"{'TOTAL (' + str(len(rows)) + ' worktrees, deduped)':{w}} {'':>4} "
           f"{grand['turns']:>6} {grand['output']:>10,} {grand['cache_read']:>12,} "
-          f"{'':>5} {cost(grand):>9,.2f}")
-    print("\nToken counts exact & deduped (keep-max per message). $ via editable PRICES.")
+          f"{grand_min:>6.0f} {cost(grand):>9,.2f}")
+    print("\nToken counts exact & deduped (keep-max per message). "
+          "min = summed per-session wall-clock (not calendar span). $ via editable PRICES.")
 
 
 def cmd_list():
@@ -268,7 +304,9 @@ def cmd_list():
                      worktree_label(os.path.basename(os.path.dirname(f))), title))
     rows.sort(key=lambda r: (r[0] is None, r[0]), reverse=True)
     for last, sid, wt, title in rows[:40]:
-        when = last.strftime("%Y-%m-%d %H:%M") if last else "?"
+        # `last` is tz-aware UTC; render in the local zone so it lines up with
+        # the user's notion of "today" (and with ccusage's local-date grouping).
+        when = last.astimezone().strftime("%Y-%m-%d %H:%M") if last else "?"
         print(f"{when}  {sid}  [{wt[:26]:26}]  {title[:44]}")
 
 
