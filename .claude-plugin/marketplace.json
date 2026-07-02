@@ -100,7 +100,7 @@
     {
       "name": "scaffold-agent-team",
       "source": "./plugins/scaffold-agent-team",
-      "description": "Scaffold a repo-coupled multi-agent team (lead / architect / backend / qa / devops) tuned to a target repo's conventions — emits project-local agents, slash commands, and a coordination protocol, then adversarially verifies the generated claims.",
+      "description": "Scaffold a repo-coupled multi-agent team (lead / architect / backend / qa / reviewer / devops) tuned to a target repo's conventions — emits project-local agents, slash commands, and a coordination protocol, then adversarially verifies the generated claims.",
       "category": "development",
       "author": {
         "name": "chrisvandermey",

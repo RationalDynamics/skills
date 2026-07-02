@@ -2,7 +2,7 @@
 name: scaffold-agent-team
 description: >-
   Scaffold a per-repo multi-agent "team" (lead + architect + backend + test +
-  devops, adapted per repo) by reading the target repo's conventions and emitting
+  reviewer + devops, adapted per repo) by reading the target repo's conventions and emitting
   customized, project-local Claude Code agents, slash commands, and a coordination
   protocol — the same pattern as the scry-team (scry-api) and dis-team (rd-dis).
   Use when the user wants to "set up an agent team", "create a dev team for this
@@ -38,6 +38,7 @@ controlled, not in a central/portable skills library. Default output (project-lo
 <repo>/.claude/agents/<prefix>-architect.md      # plan/design (no app code)
 <repo>/.claude/agents/<prefix>-backend.md        # implementation
 <repo>/.claude/agents/<prefix>-test.md           # tests + type/lint gates
+<repo>/.claude/agents/<prefix>-reviewer.md       # fresh-context diff review (read-only)
 <repo>/.claude/agents/<prefix>-devops.md         # infra/CI/deploy (only if infra exists)
 <repo>/.claude/commands/<prefix>-team.md          # /<prefix>-team orchestrator
 <repo>/.claude/commands/<prefix>-team-status.md
@@ -79,13 +80,15 @@ wrapper, `pyproject.toml`/`package.json`/`go.mod`, CI config, Dockerfile, and th
   - **Project mgmt** — Linear/ticket prefix, branch naming, PR title format, merge style.
   - **Worktree/isolation** rules, if any.
 
-**3 — Choose the roster (adaptive).** Base 5: `lead` (sonnet, orchestrator, no
-code), `architect` (opus, plan/design, no app code), `backend` (sonnet,
-implementation), `test` (sonnet, tests + gates), `devops` (opus, infra/CI/deploy).
+**3 — Choose the roster (adaptive).** Base 6: `lead` (sonnet, orchestrator, no
+code), `architect` (fable, plan/design, no app code), `backend` (sonnet,
+implementation), `test` (sonnet, tests + gates), `reviewer` (fable, fresh-context
+diff review, read-only, spawned per task), `devops` (sonnet, infra/CI/deploy).
 Adapt: add `frontend` if the repo ships a UI; **drop `devops`** if there's no
-infra/Terraform/CI to own; rename `backend`→`engineer` for non-web stacks. Default
-models: orchestration/impl/test = sonnet, deep-reasoning (architect/devops) = opus
-— state them and let the user override.
+infra/Terraform/CI to own; rename `backend`→`engineer` for non-web stacks. Keep
+`reviewer` — it's the completeness gate, and as a one-shot end-of-pipeline spawn its
+cost is bounded. Default models: orchestration/impl/test/devops = sonnet,
+deep-reasoning (architect, reviewer) = fable — state them and let the user override.
 
 **4 — Generate the protocol doc** (`docs/agent-team.md`) from
 `references/protocol-template.md`, filling every `{{PLACEHOLDER}}` from step 2.
@@ -94,7 +97,7 @@ This is the canonical file the agents and commands point at.
 **5 — Generate the agents** from `references/role-templates.md` (one per chosen
 role). Each agent: reads the protocol + AGENTS.md first; owns its slice; honors the
 repo's gates and the no-auto-deploy discipline; reports to the lead. The architect
-and lead write no code.
+and lead write no code; the reviewer never edits anything.
 
 **6 — Generate the commands** from `references/command-templates.md`
 (`<prefix>-team` orchestrator + the four monitoring commands).

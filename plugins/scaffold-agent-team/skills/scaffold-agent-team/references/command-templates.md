@@ -31,14 +31,16 @@ they inherit your permission mode.
 2. If it'll become a branch/PR, ask for the **{{LINEAR_PREFIX}} ID** first.
 
 ## Orchestration
-1. **Scope it.** Spawn only the roles the task needs. Do **NOT** spawn {{prefix}}-lead — you are the lead.
-2. **Plan (blocking).** Dispatch {{prefix}}-architect with the task + {{design doc}} pointers. Wait for its file-level plan.
+1. **Tier it, then scope it.** Trivial (one-sentence diff; no schema/API/infra impact) → no team: handle it solo and say so. Otherwise spawn only the roles the task needs. Do **NOT** spawn {{prefix}}-lead — you are the lead.
+2. **Plan (blocking).** Dispatch {{prefix}}-architect with the task + {{design doc}} pointers. Wait for its file-level plan. Large/risky tier ({{migration/schema}} change, security surface, multi-subsystem, or ≳400 lines): dispatch {{prefix}}-reviewer on the *plan* first — behavior-changing gaps only — and fold the answers in before implementing.
 3. **Implement + test (parallel).** Dispatch {{prefix}}-backend + {{prefix}}-test in one batch (paste the full plan into each). Add {{prefix}}-devops if infra is in scope.
-4. **Integrate + verify.** Reconcile diffs yourself. Confirm `{{TYPECHECK_CMD}}` + focused `{{TEST_CMD}}` pass {{+ migration regenerated if schema changed}}. Re-dispatch with feedback if rework is needed.
-5. **Deliver.** Summarize the diff + gates (| Task | Specialist | Status | Notes |). Push/PR/deploy are outward — surface for human go-ahead. {{deploy caveat}}.
+4. **Verify.** Confirm `{{TYPECHECK_CMD}}` + focused `{{TEST_CMD}}` pass {{+ migration regenerated if schema changed}}. Re-dispatch with feedback if rework is needed. You run commands; you don't review code — that's step 5.
+5. **Review (fresh context — do not skip).** Dispatch {{prefix}}-reviewer with the plan + the integrated diff range. Tests green ≠ reviewed: backend and test both worked from the plan and share its blind spots. Routine tier: one pass. Large/risky: 2–3 lens passes (correctness / data-invariants / security), then a fresh refuter per candidate finding — only confirmed findings count. Route findings to backend/test and re-review the fix.
+6. **Deliver.** Summarize the diff + gates + review verdict (| Task | Specialist | Status | Notes |). Push/PR/deploy are outward — surface for human go-ahead. {{deploy caveat}}.
 
 ## Gates (enforce — delegate the fix)
-`{{TYPECHECK_CMD}}` green · focused `{{TEST_CMD}}` green · {{migration/invariant rules}} ·
+`{{TYPECHECK_CMD}}` green · focused `{{TEST_CMD}}` green · reviewer verdict in hand,
+findings resolved or explicitly waived · {{migration/invariant rules}} ·
 never bypass the pre-commit hook · never {{the never-auto-run deploy actions}} unless explicitly instructed.
 
 > Terminal alternative: with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, the same `{{prefix}}-*`
@@ -111,7 +113,8 @@ description: Show the {{ProjectName}} team task board — every task with assign
 | 4 | {{migration if schema changed}} | backend | | |
 | 5 | Infra/CI/deploy (if in scope) | devops | | |
 | 6 | `{{TYPECHECK_CMD}}` + focused `{{TEST_CMD}}` green | test | | |
-| 7 | Deliver: diff summary + gates; human review before push | lead | | |
+| 7 | Fresh-context review: diff vs plan; findings resolved or waived | reviewer | | |
+| 8 | Deliver: diff summary + gates + review verdict; human review before push | lead | | |
 
 Status: `pending` · `in-progress` · `blocked` · `done` · `failed`.
 Populate from `TaskList`, `git log --oneline --all -20`, `gh run list --limit 5`.
@@ -131,10 +134,11 @@ description: Show the {{repo}} agent team roster and what each member is current
 | Role | subagent_type | Instance | Model | Current task | Status |
 |------|---------------|----------|-------|--------------|--------|
 | Team Lead | `{{prefix}}-lead` | `lead` | sonnet | | |
-| Architect | `{{prefix}}-architect` | `architect` | opus | | |
+| Architect | `{{prefix}}-architect` | `architect` | fable | | |
 | Backend | `{{prefix}}-backend` | `backend` | sonnet | | |
 | QA / Test | `{{prefix}}-test` | `test` | sonnet | | |
-| DevOps | `{{prefix}}-devops` | `devops` | opus | | |
+| Reviewer | `{{prefix}}-reviewer` | `reviewer` (one-shot) | fable | | |
+| DevOps | `{{prefix}}-devops` | `devops` | sonnet | | |
 
 (Only show roles actually spawned.) Populate from `TaskList`, `git diff --stat HEAD`,
 `git log --oneline -10`, or `SendMessage` an instance for a status update.

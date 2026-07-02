@@ -22,13 +22,37 @@ This file is the canonical protocol. The `/{{prefix}}-team` command and the
 | Role | subagent_type | instance `name` | Model | Owns |
 |------|---------------|-----------------|-------|------|
 | Team Lead | `{{prefix}}-lead` | `lead` (the orchestrator — that's you) | sonnet | coordination, task board, gate enforcement. No code. |
-| Architect | `{{prefix}}-architect` | `architect` | opus | reads {{design doc}} + AGENTS.md + code, produces a file-level plan, answers design questions. No app code. |
+| Architect | `{{prefix}}-architect` | `architect` | fable | reads {{design doc}} + AGENTS.md + code, produces a file-level plan, answers design questions. No app code. |
 | Backend | `{{prefix}}-backend` | `backend` | sonnet | {{the impl surface: frameworks, data layer, migrations, workers}}. |
 | QA / Test | `{{prefix}}-test` | `test` | sonnet | {{test runner}} against {{real deps}}, fixtures from the real schema, {{invariant}} coverage, {{typecheck}}. |
-| DevOps | `{{prefix}}-devops` | `devops` | opus | {{infra: Terraform/CI/Cloud Run/secrets}}. Enforces deploy discipline. |
+| Reviewer | `{{prefix}}-reviewer` | `reviewer` (one-shot — spawn per review, never a standing teammate) | fable | fresh-context review of the integrated diff vs the plan; correctness-affecting findings only. Read-only. |
+| DevOps | `{{prefix}}-devops` | `devops` | sonnet | {{infra: Terraform/CI/Cloud Run/secrets}}. Enforces deploy discipline. |
 
 **Forbidden:** never spawn a second lead; never create duplicate instances
 (`backend-2`); reuse an instance by passing the same `name`.
+
+## Effort scaling (the lead decides the tier first)
+
+- **Trivial** — diff describable in one sentence; no schema/API/infra impact → skip
+  the team entirely; solo is faster and cheaper.
+- **Routine** — one subsystem, no migration, no security surface → architect →
+  backend + test (parallel) → one reviewer pass on the integrated diff.
+- **Large/risky** — multi-subsystem, {{migration/schema}} change, security-sensitive,
+  or ≳400 changed lines → plan critique (reviewer on the plan, before implementation)
+  + review fan-out: 2–3 reviewer lenses (correctness / data-invariants / security),
+  then a fresh refuter per candidate finding; only confirmed findings block the gate.
+
+## Execution modes (default: subagents)
+
+- **Subagent mode** (`/{{prefix}}-team` — works everywhere): the session is the lead;
+  specialists are one-shot spawns. This is the default — the pipeline is mostly
+  sequential (plan → implement → review), which is what subagents are for.
+- **Live teams** (terminal, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`): reserve for
+  genuinely parallel-independent work — competing-hypothesis debugging, cross-layer
+  work on disjoint file sets, broad research/review sweeps. Teams cost ~7x a normal
+  session and add coordination overhead; official guidance recommends against them
+  for sequential or same-file work. The reviewer stays a one-shot spawn even in
+  teams mode — a standing reviewer teammate buys the 7x cost for a role that fires once.
 
 > {{If a `<prefix>-qa` or similar skill already exists, note the test agent is
 > `<prefix>-test`, distinct from that skill, and why.}}
@@ -75,6 +99,8 @@ In the desktop/web app use the **subagent** form via `/{{prefix}}-team` instead.
 
 The task is not done until: change implemented in the worktree; `{{TYPECHECK_CMD}}` +
 `{{TEST_CMD_FOCUSED}}` green locally; {{migration generated/reviewed if schema changed}};
-{{invariants}} respected; and the human has reviewed before any push/PR. None of the
-{{never-auto-run}} actions from an agent context.
+{{invariants}} respected; a fresh-context reviewer pass on the integrated diff with all
+findings resolved or explicitly waived (waivers named in the delivery summary); and the
+human has reviewed before any push/PR. None of the {{never-auto-run}} actions from an
+agent context.
 ```
