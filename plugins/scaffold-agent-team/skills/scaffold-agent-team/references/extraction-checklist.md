@@ -18,15 +18,17 @@ Dockerfile, and the `docs/`/`terraform/` layout. Quote rules verbatim where they
 | `{{HARD_INVARIANTS}}` | CI-enforced rules (egress/import boundaries, constraints) + the pre-commit hook contents + bypass policy | invariant tests, `.githooks/`, AGENTS.md |
 | `{{LINEAR_PREFIX}}` + branch/PR format | ticket prefix; branch naming; PR title format; merge style | git log, AGENTS.md, CONTRIBUTING |
 | isolation rules | worktree discipline, compose-isolation flags, shared DB ports | AGENTS.md, local-dev doc |
+| risk triggers | what makes a change "large/risky" here (migrations, security surface, cross-subsystem, size — default ≳400 lines) — drives plan critique + review fan-out | AGENTS.md, invariant tests, CI config |
 | existing collisions | any existing `<prefix>-*` skill/agent the team names must not clash with | `.claude/skills/`, `.claude/agents/`, `~/.claude/` |
 
 ## Roster decision rules
 
-- Always: `lead`, `architect`, `backend`, `test`.
+- Always: `lead`, `architect`, `backend`, `test`, `reviewer` (one-shot, end of pipeline —
+  the completeness gate; its cost is bounded, so never drop it).
 - `devops`: include **only** if the repo has infra/Terraform/CI worth owning. Otherwise drop it.
 - `frontend`: add if the repo ships a UI surface distinct from the backend.
 - Rename `backend`→`engineer`/`core` for non-web stacks (CLI, library, data pipeline).
-- Models: orchestration/impl/test = sonnet; deep-reasoning (architect, devops) = opus. State them; let the user override.
+- Models: orchestration/impl/test/devops = sonnet; deep-reasoning (architect, reviewer) = fable. State them; let the user override.
 
 ## Naming collision rule
 
