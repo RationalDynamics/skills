@@ -54,6 +54,27 @@ Open the viewer at `localhost:5000`. Click red nodes to launch terminal sessions
 
 When all nodes at a level are green, unlock the next level and repeat.
 
+### Terminal launcher: windows vs. named tabs
+
+By default, each session opens in its own new **Terminal.app window**. To keep them
+consolidated as **named tabs** instead, start the server with `--launcher tmux` — each
+session becomes a named window (labeled with the node's name) inside a shared tmux
+session, and you attach once to watch them all:
+
+```bash
+python3 scripts/server.py .orchestrator/<slug>/ --launcher tmux
+# then, in any terminal (Terminal.app, VS Code's, iTerm…):
+tmux attach -t orch-<slug>
+```
+
+| `--launcher` | Where sessions open | Trigger | Needs |
+|---|---|---|---|
+| `terminal` (default) | one Terminal.app window each | instant, per node click | nothing |
+| `tmux` | named tabs in one tmux session | instant, per node click | `tmux` (`brew install tmux`) |
+
+Also settable via `ORCHESTRATOR_LAUNCHER=tmux`. In `tmux` mode the server prints the
+exact `tmux attach` command on startup.
+
 ## Installation
 
 Copy or symlink the `the-orchestrator/` directory into `~/.claude/skills/`.

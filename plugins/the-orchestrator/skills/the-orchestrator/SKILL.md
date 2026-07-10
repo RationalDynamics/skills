@@ -257,6 +257,29 @@ python3 ~/.claude/skills/the-orchestrator/scripts/server.py \
   .orchestrator/<slug>/ &
 ```
 
+### Launcher backend (where sessions open)
+
+By default each node/patch/verifier session opens in its own new **Terminal.app
+window**. If the user asks for consolidated, **named tabs** instead — e.g. "use
+tmux for the terminals", "open the sessions as named tabs", "I don't want a pile
+of Terminal windows" — start the server with `--launcher tmux`:
+
+```bash
+python3 ~/.claude/skills/the-orchestrator/scripts/server.py \
+  .orchestrator/<slug>/ --launcher tmux &
+```
+
+- `--launcher terminal` (default): one new Terminal.app window per session (original behavior).
+- `--launcher tmux`: each session opens as a **named window** inside a shared tmux
+  session `orch-<slug>` — the window is labeled with the node's name. Launch stays
+  instant and per-click; the user attaches once (`tmux attach -t orch-<slug>`) to
+  see all sessions as labeled tabs in one view. Requires `tmux` on PATH
+  (`brew install tmux`); the server refuses to start in tmux mode without it.
+  Also settable via the `ORCHESTRATOR_LAUNCHER=tmux` env var.
+
+When you start in tmux mode, tell the user the exact attach command the server
+prints (`tmux attach -t orch-<slug>`).
+
 This starts a local HTTP server that:
 - Serves the interactive DAG visualization
 - Exposes `GET /api/state` for the viewer to poll node statuses
@@ -291,7 +314,8 @@ When all nodes at the current level are green and the user clicks "Unlock Next L
 When a node is clicked in the viewer, the behavior depends on its status:
 
 ### Red Node (not started)
-Opens a new Terminal window via `osascript` that:
+Opens a new session (a Terminal.app window by default, or a named tmux window
+under `--launcher tmux`) that:
 1. `cd`s to the worktree directory for this node (created if it doesn't exist)
 2. Launches `claude` with the node's context file pre-loaded
 3. Updates `state.json` to record `worktree_path` and `started_at`

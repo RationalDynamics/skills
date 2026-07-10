@@ -15,6 +15,8 @@ The server runs on localhost:5000 by default (override with --port).
 import argparse
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -363,9 +365,8 @@ If any step fails, set "passed": false and list all failures.
 Do NOT attempt to fix failures. Report them and stop.
 """)
 
-        # Build .command script
-        script_content = f"""#!/bin/bash -l
-export ORCHESTRATOR_SESSION=1
+        # Build the launch script body (shebang added by _spawn_session)
+        script_body = f"""export ORCHESTRATOR_SESSION=1
 PORT={server_port}
 NODE_ID=__verifier__
 (while true; do curl -s -X POST http://localhost:${{PORT}}/api/heartbeat/${{NODE_ID}} > /dev/null 2>&1; sleep 3; done) &
@@ -376,14 +377,16 @@ cd "{repo_root}"
 claude --permission-mode plan "$(cat '{verify_prompt_file}')"
 """
 
-        launch_dir = repo_root / ".worktrees"
-        launch_dir.mkdir(parents=True, exist_ok=True)
-        script_path = launch_dir / "launch-verifier.command"
-        script_path.write_text(script_content)
-        script_path.chmod(0o755)
-
-        subprocess.run(["open", str(script_path)], check=True)
-        print("[orchestrator] Verifier terminal launched", file=sys.stderr)
+        err = self._spawn_session(
+            script_body,
+            window_name="verifier",
+            script_basename="launch-verifier.command",
+            repo_root=repo_root,
+        )
+        if err:
+            print(f"[orchestrator] Verifier terminal launch failed: {err}", file=sys.stderr)
+        else:
+            print("[orchestrator] Verifier terminal launched", file=sys.stderr)
 
     def _patch(self):
         """Launch a patch/fast-fix terminal session on the feature branch."""
@@ -446,10 +449,9 @@ Use this format for each patch entry:
 DO NOT include a "Co-Authored-By" signature in commit messages.
 """)
 
-        # Build .command script
+        # Build the launch script body (shebang added by _spawn_session)
         server_port = self.server.server_address[1]
-        script_content = f"""#!/bin/bash -l
-export ORCHESTRATOR_SESSION=1
+        script_body = f"""export ORCHESTRATOR_SESSION=1
 PORT={server_port}
 NODE_ID=__patch__
 (while true; do curl -s -X POST http://localhost:${{PORT}}/api/heartbeat/${{NODE_ID}} > /dev/null 2>&1; sleep 3; done) &
@@ -460,17 +462,13 @@ cd "{repo_root}"
 claude --permission-mode plan "$(cat '{prompt_file}')"
 """
 
-        launch_dir = repo_root / ".worktrees"
-        launch_dir.mkdir(parents=True, exist_ok=True)
-        script_path = launch_dir / "launch-patch.command"
-        script_path.write_text(script_content)
-        script_path.chmod(0o755)
-
-        try:
-            subprocess.run(["open", str(script_path)], check=True)
-            self._send_json({"ok": True})
-        except subprocess.CalledProcessError as e:
-            self._send_json({"ok": False, "error": str(e)})
+        err = self._spawn_session(
+            script_body,
+            window_name="patch",
+            script_basename="launch-patch.command",
+            repo_root=repo_root,
+        )
+        self._send_json({"ok": True} if not err else {"ok": False, "error": err})
 
     def _serve_queue(self):
         """Scan addendums/ for user_request_*.md files and return parsed list."""
@@ -998,6 +996,79 @@ Output ALL nodes now, each wrapped in ===NODE:<node-id>=== ... ===END_NODE=== de
         if missing:
             raise RuntimeError(f"Context generation missing nodes: {missing}")
 
+    # ------------------------------------------------------------------
+    # Terminal launcher backends
+    #
+    # Every session (node, add-feature, patch, verifier) is spawned through
+    # _spawn_session so the launcher backend is chosen in exactly one place.
+    #   - "terminal" (default): write a .command file and `open` it — macOS
+    #     launches it in a new Terminal.app window (original behavior).
+    #   - "tmux": run the same script as a NAMED window inside a shared tmux
+    #     session, so sessions appear as labeled tabs in one attached view.
+    # The script body, worktree, heartbeat, and state handling are identical
+    # across backends — only where the terminal shows up changes.
+    # ------------------------------------------------------------------
+
+    def _launcher(self):
+        return getattr(self.server, "launcher", "terminal")
+
+    def _tmux_session(self):
+        """Stable tmux session name derived from the orchestration slug."""
+        try:
+            slug = self._read_json("graph.json").get("slug", "orchestrator")
+        except Exception:
+            slug = "orchestrator"
+        safe = re.sub(r"[^A-Za-z0-9_-]", "-", str(slug))[:40] or "orchestrator"
+        return f"orch-{safe}"
+
+    def _spawn_session(self, script_body, *, window_name, script_basename, repo_root):
+        """Write the launch script and start it via the active launcher backend.
+
+        script_body is everything after the shebang line. Returns None on
+        success or an error string on failure.
+        """
+        launch_dir = repo_root / ".worktrees"
+        launch_dir.mkdir(parents=True, exist_ok=True)
+        script_path = launch_dir / script_basename
+        script_path.write_text(f"#!/bin/bash -l\n{script_body}\n")
+        script_path.chmod(0o755)
+
+        if self._launcher() == "tmux":
+            return self._spawn_tmux(script_path, window_name)
+        try:
+            subprocess.run(["open", str(script_path)], check=True)
+            return None
+        except subprocess.CalledProcessError as e:
+            return str(e)
+
+    def _spawn_tmux(self, script_path, window_name):
+        """Run script_path as a named window in the shared tmux session."""
+        if not shutil.which("tmux"):
+            return ("tmux launcher selected but tmux is not installed. "
+                    "Install it (brew install tmux) or restart the server with --launcher terminal.")
+        session = self._tmux_session()
+        # Ensure the shared session exists (create it detached if not).
+        exists = subprocess.run(
+            ["tmux", "has-session", "-t", session],
+            capture_output=True,
+        ).returncode == 0
+        if not exists:
+            subprocess.run(
+                ["tmux", "new-session", "-d", "-s", session, "-n", "orchestrator"],
+                check=False,
+            )
+        # tmux window names can't contain "." or ":"; keep them short + readable.
+        name = re.sub(r"[.:]", "-", str(window_name))[:40]
+        result = subprocess.run(
+            ["tmux", "new-window", "-t", session, "-n", name, str(script_path)],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return f"tmux new-window failed: {result.stderr.strip()[:200]}"
+        print(f"[orchestrator] tmux window '{name}' created in session '{session}' "
+              f"(attach: tmux attach -t {session})", file=sys.stderr)
+        return None
+
     def _launch_node(self, node_id):
         """Launch a terminal session for a node."""
         graph = self._read_json("graph.json")
@@ -1054,11 +1125,7 @@ Output ALL nodes now, each wrapped in ===NODE:<node-id>=== ... ===END_NODE=== de
         else:
             commands.append("claude")
 
-        # Write a .command file and open it — macOS launches it in
-        # Terminal.app natively with no Automation permission needed.
-        launch_dir = repo_root / ".worktrees"
-        launch_dir.mkdir(parents=True, exist_ok=True)
-        script_path = launch_dir / f"launch-{node_id}.command"
+        # Assemble the launch script body (shebang added by _spawn_session).
         shell_script = "\n".join(commands)
         server_port = self.server.server_address[1]
         heartbeat_preamble = (
@@ -1068,14 +1135,18 @@ Output ALL nodes now, each wrapped in ===NODE:<node-id>=== ... ===END_NODE=== de
             "HEARTBEAT_PID=$!\n"
             'trap "kill $HEARTBEAT_PID 2>/dev/null" EXIT\n'
         )
-        script_path.write_text(f"#!/bin/bash -l\nexport ORCHESTRATOR_SESSION=1\n{heartbeat_preamble}\n{shell_script}\n")
-        script_path.chmod(0o755)
+        script_body = f"export ORCHESTRATOR_SESSION=1\n{heartbeat_preamble}\n{shell_script}"
 
-        try:
-            subprocess.run(["open", str(script_path)], check=True)
+        err = self._spawn_session(
+            script_body,
+            window_name=node.get("name") or node_id,
+            script_basename=f"launch-{node_id}.command",
+            repo_root=repo_root,
+        )
+        if err:
+            self._send_json({"ok": False, "error": err})
+        else:
             self._send_json({"ok": True, "worktree": str(worktree_dir)})
-        except subprocess.CalledProcessError as e:
-            self._send_json({"ok": False, "error": str(e)})
 
     def _add_feature(self):
         """Launch a terminal session for speccing a new feature request."""
@@ -1117,23 +1188,19 @@ Use this exact format:
 <Which parts of the codebase / which existing or future nodes this affects>
 """)
 
-        # Build .command script following the same pattern as _launch_node
-        launch_dir = repo_root / ".worktrees"
-        launch_dir.mkdir(parents=True, exist_ok=True)
-        script_path = launch_dir / "launch-add-feature.command"
-        script_path.write_text(
-            f'#!/bin/bash -l\n'
+        # Build the launch script body (shebang added by _spawn_session).
+        script_body = (
             f'export ORCHESTRATOR_SESSION=1\n'
             f'cd "{repo_root}"\n'
-            f'claude --permission-mode plan "$(cat \'{prompt_path}\')"\n'
+            f'claude --permission-mode plan "$(cat \'{prompt_path}\')"'
         )
-        script_path.chmod(0o755)
-
-        try:
-            subprocess.run(["open", str(script_path)], check=True)
-            self._send_json({"ok": True})
-        except subprocess.CalledProcessError as e:
-            self._send_json({"ok": False, "error": str(e)})
+        err = self._spawn_session(
+            script_body,
+            window_name="add-feature",
+            script_basename="launch-add-feature.command",
+            repo_root=repo_root,
+        )
+        self._send_json({"ok": True} if not err else {"ok": False, "error": err})
 
     def _update_graph(self):
         """Trigger mid-level graph restructuring to incorporate queued features."""
@@ -1397,8 +1464,9 @@ Output the complete restructured graph.json:
 
 
 class OrchestratorServer(HTTPServer):
-    def __init__(self, orchestrator_dir, port=5000):
+    def __init__(self, orchestrator_dir, port=5000, launcher="terminal"):
         self.orchestrator_dir = Path(orchestrator_dir).resolve()
+        self.launcher = launcher
         super().__init__(("localhost", port), OrchestratorHandler)
 
 
@@ -1407,17 +1475,49 @@ def main():
     parser.add_argument("orchestrator_dir", help="Path to .orchestrator/<slug>/ directory")
     parser.add_argument("--port", type=int, default=5000, help="Port to serve on (default: 5000)")
     parser.add_argument("--no-open", action="store_true", help="Don't auto-open browser")
+    parser.add_argument(
+        "--launcher",
+        choices=["terminal", "tmux"],
+        default=os.environ.get("ORCHESTRATOR_LAUNCHER", "terminal"),
+        help=(
+            "Where node/patch/verifier sessions open. "
+            "'terminal' (default): a new Terminal.app window per session. "
+            "'tmux': a named window per session inside a shared tmux session "
+            "(attach once to see them as labeled tabs). "
+            "Overridable via the ORCHESTRATOR_LAUNCHER env var."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.launcher == "tmux" and not shutil.which("tmux"):
+        print(
+            "Error: --launcher tmux requires tmux, which is not installed.\n"
+            "       Install it (e.g. `brew install tmux`) or use --launcher terminal.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     orch_dir = Path(args.orchestrator_dir)
     if not (orch_dir / "graph.json").exists():
         print(f"Error: {orch_dir}/graph.json not found", file=sys.stderr)
         sys.exit(1)
 
-    server = OrchestratorServer(orch_dir, args.port)
+    server = OrchestratorServer(orch_dir, args.port, launcher=args.launcher)
     url = f"http://localhost:{args.port}"
     print(f"[orchestrator] Serving at {url}")
     print(f"[orchestrator] Watching: {orch_dir}")
+    print(f"[orchestrator] Launcher: {args.launcher}")
+    if args.launcher == "tmux":
+        try:
+            slug = json.loads((orch_dir / "graph.json").read_text()).get("slug", "orchestrator")
+        except Exception:
+            slug = "orchestrator"
+        safe = re.sub(r"[^A-Za-z0-9_-]", "-", str(slug))[:40] or "orchestrator"
+        print(
+            f"[orchestrator] tmux mode: sessions open as named windows in the "
+            f"'orch-{safe}' tmux session.\n"
+            f"[orchestrator] Attach once to watch them:  tmux attach -t orch-{safe}"
+        )
 
     if not args.no_open:
         threading.Timer(0.5, webbrowser.open, args=[url]).start()
