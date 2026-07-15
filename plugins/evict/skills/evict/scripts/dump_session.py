@@ -7,7 +7,7 @@ assistant/tool exchange that followed until the next human prompt). Turns are th
 atoms the model groups into evict "blocks".
 
 Outputs, under --out-dir (default /tmp/claude-evict/<session-id>/):
-  full-transcript.md   the whole session, turn by turn (exact-ish; see caps)
+  full-transcript.md   the whole session, turn by turn (verbatim)
   turns/turn-<N>.md    one file per turn (verbatim slice used for reload)
   index.json           [{turn, preview, chars, kind}]  machine-readable index
 
@@ -16,9 +16,7 @@ Also prints a compact index to stdout so the model sees turn boundaries directly
 Turn 0 (if present) is any pre-amble before the first human prompt.
 Assistant "thinking" blocks are internal and omitted by default (they are not
 reloaded and only add noise); pass --include-thinking to keep them.
-Very large tool_result / tool_use payloads are capped (--max-payload) with an
-explicit truncation marker so working files stay sane; this is the only place
-"verbatim" is lossy, and it is marked inline.
+Content is rendered in full — nothing is truncated.
 """
 from __future__ import annotations
 
@@ -58,16 +56,10 @@ def resolve_transcript(session_id: str | None, project_dir: str | None) -> Path:
     return jsonls[0]
 
 
-def _cap(text: str, limit: int) -> str:
-    if limit and len(text) > limit:
-        return text[:limit] + f"\n…[truncated {len(text) - limit} chars]…"
-    return text
-
-
-def _stringify(content, limit: int) -> str:
-    """tool_result content may be a str or a list of blocks."""
+def _stringify(content) -> str:
+    """tool_result content may be a str or a list of blocks. Rendered in full."""
     if isinstance(content, str):
-        return _cap(content, limit)
+        return content
     if isinstance(content, list):
         parts = []
         for b in content:
@@ -75,11 +67,11 @@ def _stringify(content, limit: int) -> str:
                 if b.get("type") == "text":
                     parts.append(b.get("text", ""))
                 else:
-                    parts.append(json.dumps(b)[:limit])
+                    parts.append(json.dumps(b))
             else:
                 parts.append(str(b))
-        return _cap("\n".join(parts), limit)
-    return _cap(json.dumps(content), limit)
+        return "\n".join(parts)
+    return json.dumps(content)
 
 
 def is_human_user(rec: dict) -> bool:
@@ -93,7 +85,7 @@ def is_human_user(rec: dict) -> bool:
     return False
 
 
-def render_record(rec: dict, include_thinking: bool, limit: int) -> list[str]:
+def render_record(rec: dict, include_thinking: bool) -> list[str]:
     t = rec.get("type")
     msg = rec.get("message", {})
     content = msg.get("content")
@@ -110,7 +102,7 @@ def render_record(rec: dict, include_thinking: bool, limit: int) -> list[str]:
                 if bt == "text":
                     out.append(f"**USER:** {b.get('text', '')}")
                 elif bt == "tool_result":
-                    body = _stringify(b.get("content", ""), limit)
+                    body = _stringify(b.get("content", ""))
                     out.append(f"  ↳ _[tool_result]_ {body}")
                 elif bt == "image":
                     out.append("  ↳ _[user image attachment]_")
@@ -126,9 +118,9 @@ def render_record(rec: dict, include_thinking: bool, limit: int) -> list[str]:
                     out.append(f"**ASSISTANT:** {b.get('text', '')}")
                 elif bt == "thinking":
                     if include_thinking:
-                        out.append(f"_(thinking)_ {_cap(b.get('thinking', ''), limit)}")
+                        out.append(f"_(thinking)_ {b.get('thinking', '')}")
                 elif bt == "tool_use":
-                    inp = _cap(json.dumps(b.get("input", {}), ensure_ascii=False), limit)
+                    inp = json.dumps(b.get("input", {}), ensure_ascii=False)
                     out.append(f"  → _[tool_use: {b.get('name')}]_ {inp}")
         elif isinstance(content, str):
             out.append(f"**ASSISTANT:** {content}")
@@ -145,7 +137,6 @@ def main() -> None:
     ap.add_argument("--project-dir", default=None)
     ap.add_argument("--out-dir", default=None)
     ap.add_argument("--include-thinking", action="store_true")
-    ap.add_argument("--max-payload", type=int, default=6000)
     args = ap.parse_args()
 
     transcript = resolve_transcript(args.session_id, args.project_dir)
@@ -189,7 +180,7 @@ def main() -> None:
                 cur = new_turn(preview)
             if cur is None:
                 cur = new_turn("(session preamble)")
-            cur["lines"].extend(render_record(rec, args.include_thinking, args.max_payload))
+            cur["lines"].extend(render_record(rec, args.include_thinking))
     if cur is not None:
         turns.append(cur)
 
