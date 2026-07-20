@@ -28,10 +28,34 @@ if [ ! -f "$RELOAD_FILE" ]; then
   exit 0
 fi
 
-CONTENT=$(cat "$RELOAD_FILE")
+# Claude Code caps hook `additionalContext` at 10,000 characters: above that it
+# persists the full text to a file and injects only a preview, so large kept-context
+# silently fails to restore. Inline only payloads that stay safely under the cap
+# (9000 bytes leaves margin for byte-vs-char width and JSON escaping); for larger
+# ones, preserve the reload file at a stable path and inject a short pointer so the
+# model reads the FULL content on its next turn (the read path has no inline cap).
+CONTENT_SIZE=$(wc -c < "$RELOAD_FILE" | tr -d ' ')
+INLINE_LIMIT=9000
 
-# Clean up working dir + pending marker before injecting.
-[ -n "$WORK_DIR" ] && rm -rf "$WORK_DIR"
-rm -f "$PENDING_FILE"
+emit() { python3 -c "import json,sys; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': sys.stdin.read()}}))"; }
 
-python3 -c "import json,sys; print(json.dumps({'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': sys.stdin.read()}}))" <<< "$CONTENT"
+if [ "$CONTENT_SIZE" -le "$INLINE_LIMIT" ]; then
+  # Small enough to inline directly — seamless, no tool call.
+  CONTENT=$(cat "$RELOAD_FILE")
+  [ -n "$WORK_DIR" ] && rm -rf "$WORK_DIR"
+  rm -f "$PENDING_FILE"
+  printf '%s' "$CONTENT" | emit
+else
+  # Too large to inline without harness truncation — preserve + point at the file.
+  STABLE="/tmp/evict_reload_last.md"
+  cp "$RELOAD_FILE" "$STABLE"
+  [ -n "$WORK_DIR" ] && rm -rf "$WORK_DIR"
+  rm -f "$PENDING_FILE"
+  printf '%s' "# Restored Context (via /evict)
+
+Your kept context from before /clear is ${CONTENT_SIZE} bytes — too large to inline without truncation. It was saved IN FULL to:
+
+    ${STABLE}
+
+Read that file in full now, before doing anything else, and treat its contents as your restored session context (the blocks you chose to keep)." | emit
+fi
