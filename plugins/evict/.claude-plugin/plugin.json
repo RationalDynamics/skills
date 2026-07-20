@@ -1,0 +1,9 @@
+{
+  "name": "evict",
+  "description": "One-shot context surgery (/evict): dump the session exactly, auto-segment it into the distinct things you worked on, then keep each block verbatim, keep only a summary, or evict it — and stage a lean /clear reload of just what you chose. Standalone; no prior setup. Slash-invoked only.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Raavi Gupta",
+    "email": "raavi@rationaldynamics.ai"
+  }
+}

@@ -47,7 +47,7 @@ If you'd rather not clone, add the marketplace once and loop over the names
 
 ```sh
 claude plugin marketplace add https://github.com/RationalDynamics/skills
-for p in breakpoint neuralize grill-me tdd esoteric-elucidation the-orchestrator \
+for p in breakpoint neuralize evict grill-me tdd esoteric-elucidation the-orchestrator \
          storm-research costorm-session camera-lens-travel-eval scaffold-agent-team \
          session-cost; do
   claude plugin install "$p@devo-skills"
@@ -124,6 +124,7 @@ These remain available from the Claude marketplace but are intentionally absent 
 Codex marketplace until ported:
 
 - [`breakpoint`](plugins/breakpoint/skills/breakpoint/SKILL.md) and [`neuralize`](plugins/neuralize/skills/neuralize/SKILL.md) — manual context checkpoints and selective context eviction.
+- [`evict`](plugins/evict/skills/evict/SKILL.md) — one-shot context surgery: auto-segment the session into blocks, then keep verbatim / summarize / evict each and stage a lean `/clear` reload. Standalone; no prior setup.
 - [`the-orchestrator`](plugins/the-orchestrator/skills/the-orchestrator/SKILL.md) — parallel task orchestration across worktrees.
 - [`scaffold-agent-team`](plugins/scaffold-agent-team/skills/scaffold-agent-team/SKILL.md) — repo-specific agent-team scaffolding.
 - [`camera-lens-travel-eval`](plugins/camera-lens-travel-eval/skills/camera-lens-travel-eval/SKILL.md) — an auditable worked-example evaluator.

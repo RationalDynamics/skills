@@ -28,6 +28,16 @@
       }
     },
     {
+      "name": "evict",
+      "source": "./plugins/evict",
+      "description": "One-shot context surgery (/evict): dump the session exactly, auto-segment it into the distinct things you worked on, then keep each block verbatim, keep only a summary, or evict it — and stage a lean /clear reload of just what you chose. Standalone; no prior setup. Slash-invoked only.",
+      "category": "context",
+      "author": {
+        "name": "Raavi Gupta",
+        "email": "raavi@rationaldynamics.ai"
+      }
+    },
+    {
       "name": "grill-me",
       "source": "./plugins/grill-me",
       "description": "Interview the user relentlessly about a plan or design, resolving each branch of the decision tree until shared understanding. Use to stress-test a plan.",
