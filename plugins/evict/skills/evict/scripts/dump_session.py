@@ -143,7 +143,6 @@ def main() -> None:
     session_id = transcript.stem
     out_dir = Path(args.out_dir) if args.out_dir else Path("/tmp/claude-evict") / session_id
     turns_dir = out_dir / "turns"
-    turns_dir.mkdir(parents=True, exist_ok=True)
 
     # Assemble turns: each human prompt opens a new turn.
     turns: list[dict] = []
@@ -183,6 +182,17 @@ def main() -> None:
             cur["lines"].extend(render_record(rec, args.include_thinking))
     if cur is not None:
         turns.append(cur)
+
+    # Fail loudly rather than leaving an empty out_dir behind (a marker pointing at
+    # an empty capture is exactly what makes /clear restore nothing silently).
+    if not turns:
+        sys.exit(
+            f"error: no turns parsed from {transcript} — refusing to stage an empty "
+            f"capture. Nothing written."
+        )
+
+    # Only now that we have content do we create the output tree.
+    turns_dir.mkdir(parents=True, exist_ok=True)
 
     index = []
     full_parts = []

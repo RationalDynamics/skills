@@ -42,11 +42,19 @@ the script falls back to the newest transcript in the project dir, which is the 
 python3 ~/.claude/skills/evict/scripts/dump_session.py --session-id <SESSION_ID>
 ```
 
-It writes `full-transcript.md`, one `turns/turn-<N>.md` per turn, and `index.json` under
-`/tmp/claude-evict/<session-id>/`, and prints a TURN INDEX to stdout. A "turn" = one human prompt
-plus every assistant/tool exchange until the next human prompt.
+It writes `full-transcript.md`, one `turns/turn-<N>.md` per turn, and `index.json` under an output
+directory, and prints a TURN INDEX to stdout. A "turn" = one human prompt plus every assistant/tool
+exchange until the next human prompt.
 
-If it reports `turns: 0`, output **"Nothing to evict — the session has no content yet."** and stop.
+**Capture the `out_dir:` line the script prints and use it verbatim for every path in Steps 4–5.**
+The script may fall back to a different session than the id you passed (newest transcript), so its
+reported `out_dir` — not a re-derived `<session-id>` — is the single source of truth for where the
+turn files live and where the reload file and marker must point. Treat its `out_dir` as `$OUT_DIR`
+below.
+
+The script now refuses to write an empty capture: if it exits non-zero (no turns parsed) or reports
+`turns: 0`, output **"Nothing to evict — the session has no content yet."** and stop. Do not proceed
+to staging on a failed dump.
 
 ## Step 2 — Segment turns into blocks
 
@@ -93,7 +101,8 @@ If the user signals cancel ("nevermind", "cancel", "stop"), output
 
 ## Step 4 — Build the reload file
 
-Write `/tmp/claude-evict/<session-id>/evict_reload.md`:
+Write `$OUT_DIR/evict_reload.md` (the same `$OUT_DIR` the dumper printed in Step 1 — do not
+substitute a re-derived `<session-id>`):
 
 ```markdown
 # Restored Context (via /evict)
@@ -125,13 +134,21 @@ Write `/tmp/.evict_pending.json`:
 ```json
 {
   "pending": true,
-  "work_dir": "/tmp/claude-evict/<session-id>",
-  "reload_file": "/tmp/claude-evict/<session-id>/evict_reload.md",
+  "work_dir": "$OUT_DIR",
+  "reload_file": "$OUT_DIR/evict_reload.md",
   "kept_verbatim": [1, 3],
   "kept_summary": [4],
   "evicted": [2]
 }
 ```
+
+`work_dir` and `reload_file` MUST use the dumper's `$OUT_DIR` from Step 1, so the marker points at
+the same tree the turn files actually live in.
+
+**Then verify before you tell the user to clear:** confirm `$OUT_DIR/evict_reload.md` exists and is
+non-empty (e.g. `test -s "$OUT_DIR/evict_reload.md" && wc -c < "$OUT_DIR/evict_reload.md"`). If it is
+missing or empty, the reload would silently restore nothing — do **not** proceed to Step 6; re-do
+Step 4 (and re-run Step 1 if the turn files are gone).
 
 (Do not stamp a timestamp — `date` is unavailable in some sandboxes and it isn't needed.)
 
@@ -151,8 +168,9 @@ If the `SessionStart` hook is **not** registered, append:
 ## After /clear (you don't run this)
 
 The `SessionStart` hook (`scripts/reload.sh`) reads `/tmp/.evict_pending.json`, injects
-`evict_reload.md` as a `systemMessage`, deletes the working dir and pending marker, and the user
-starts fresh with only their kept context.
+`evict_reload.md` via `hookSpecificOutput.additionalContext` (the SessionStart output channel that
+actually enters the model's context — **not** `systemMessage`, which is display-only), deletes the
+working dir and pending marker, and the user starts fresh with only their kept context.
 
 ## Edge case — re-invoked before /clear
 
