@@ -172,6 +172,13 @@ The `SessionStart` hook (`scripts/reload.sh`) reads `/tmp/.evict_pending.json`, 
 actually enters the model's context — **not** `systemMessage`, which is display-only), deletes the
 working dir and pending marker, and the user starts fresh with only their kept context.
 
+The host caps how much `additionalContext` it injects inline: above roughly 10KB it persists the
+full text to its own file and hands the model only a short preview, so a large kept-context would
+silently fail to restore. The hook guards against this — for small payloads it inlines as above; for
+large ones it preserves `evict_reload.md` at a stable path and injects a short pointer instructing
+the model to read that file in full before doing anything else, so the entire kept context is
+restored regardless of size.
+
 ## Edge case — re-invoked before /clear
 
 If `/tmp/.evict_pending.json` already exists with `"pending": true`, a prior evict is staged but not
