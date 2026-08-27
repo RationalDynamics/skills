@@ -130,7 +130,7 @@ Codex marketplace until ported:
 - [`camera-lens-travel-eval`](plugins/camera-lens-travel-eval/skills/camera-lens-travel-eval/SKILL.md) — an auditable worked-example evaluator.
 - [`session-cost`](plugins/session-cost/skills/session-cost/SKILL.md) — Claude session cost and usage reporting.
 - [`sync-repos`](plugins/sync-repos/skills/sync-repos/SKILL.md) — sync a workspace of clones (fetch, fast-forward, rebase), then resolve the conflicts the script left paused.
-- [`help-me-review-a-pr`](plugins/help-me-review-a-pr/skills/help-me-review-a-pr/SKILL.md) — prepares a human to review a PR: runs the machine pass and subtracts it, then surfaces the decisions, complexity-budget cuts, and naming problems an AI reviewer will not raise.
+- [`help-me-review-a-pr`](plugins/help-me-review-a-pr/skills/help-me-review-a-pr/SKILL.md) — prepares a human to review a PR: folds the machine pass into one prioritized findings list, then adds the decisions, complexity-budget cuts, and naming problems an AI reviewer will not raise.
 
 ## Develop locally
 
