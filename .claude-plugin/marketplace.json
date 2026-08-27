@@ -136,6 +136,16 @@
         "name": "chrisvandermey",
         "email": "chris@rationaldynamics.ai"
       }
+    },
+    {
+      "name": "ticket-bash",
+      "source": "./plugins/ticket-bash",
+      "description": "Autonomous backlog burndown: take unclaimed, unambiguous tickets from tracker to draft PR with no human round-trips. Triage against an eligibility bar into a durable queue file, plan every ticket in parallel as an ambiguity gate before any code is written, implement and review in parallel worktrees, then drive CI and the review bots to green — with a circuit-breaker that escalates a redesign instead of patching the same finding twice.",
+      "category": "development",
+      "author": {
+        "name": "Edward Dewey",
+        "email": "ed@rationaldynamics.ai"
+      }
     }
   ]
 }
