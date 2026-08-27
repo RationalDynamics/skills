@@ -19,6 +19,12 @@ This runs unattended for long stretches, so two things matter more than anything
 **durable queue file** so an interruption never costs triage, and a **planning gate** that kills
 bad tickets before they reach code.
 
+> **Scope.** This skill targets Claude Code specifically and names its mechanics — concurrent agent
+> calls issued in one message, harness re-invocation on a background command exiting, resuming a
+> dead sub-agent by message rather than re-spawning it. Those are load-bearing here, not incidental
+> phrasing, which is why this ships in the Claude catalog only and is not a cross-platform
+> candidate. Porting it means finding each host's equivalent, not deleting the sentence.
+
 ## Configure before the first run
 
 Nothing below assumes a particular workspace. Resolve each setting, and **ask rather than guess**
@@ -96,10 +102,23 @@ design-laden hot-path refactor → declined on the size and ambiguity grounds, n
 At the very start of every run, **read the queue file if it exists.** It carries forward all prior
 triage so you don't redo it:
 
-- Rows marked `DONE`, `PARTIAL`, `SKIP`, `DEFER`, `AMBIGUOUS`, or `BLOCKED` are **already handled** —
-  do NOT re-triage, re-plan, or re-pick them. Honor the recorded reason.
-- Start from the file's "Remaining ACTIONABLE candidates" list, then triage only tickets not already
-  in the file.
+- **Within a run, a recorded verdict is final.** Do not re-triage, re-plan, or re-pick a row you
+  already ruled on this run; that loop is what the queue exists to prevent.
+- **Across runs, only `DONE` and `SKIP` are terminal.** The others are conditional, and re-reading
+  them as permanent is how a run silently stops working tickets that became actionable:
+  - `BLOCKED:<reason>` — re-check the reason, and only the reason. A blocker lands, a base PR
+    merges, an access request is granted. Record the condition that would clear it when you write
+    the row, so the next run tests a stated condition instead of re-deriving it.
+  - `PARTIAL` — this is **unfinished work, not a disposition.** It has a branch and usually a `WIP:`
+    PR. Resume it before pulling anything new; it is the highest-priority row in the file.
+  - `DEFER` / `AMBIGUOUS` — re-open only on evidence: the ticket was edited, a question was
+    answered, or the user says to reconsider. Do not re-litigate an unchanged ticket, and never
+    downgrade your own prior AMBIGUOUS just because a new run feels more confident.
+- Give every non-terminal row a `revisit-when` field. A row with no such condition and no ticket
+  edit is inert, and should be reported as inert at the end of the run rather than quietly skipped
+  forever.
+- Start from the file's "Remaining ACTIONABLE candidates" list, then the resumable `PARTIAL` rows,
+  then any conditional row whose condition now holds, then triage tickets not already in the file.
 - Tickets you shipped usually get auto-assigned by the tracker's git integration once a PR
   references the ID, so they drop out of an `assignee = null` query on their own. But deferred and
   skipped tickets stay unassigned and WILL reappear in the pull — the queue file is the only thing
@@ -152,6 +171,13 @@ Each ticket has its own worktree, so they don't collide — fan out:
 - **Draft PR and record:** open the draft PR (small and single-purpose; a backend+frontend pair
   becomes two linked draft PRs noting release ordering). Comment the PR link on the ticket. Update
   the queue row. Remove the worktree.
+
+**Removing the worktree at the PR, before step 3b's bot loop, is deliberate.** The push already
+made the remote the source of truth, and for autonomous work nobody has reviewed yet that is where
+it should live — a local worktree holding unreviewed state is a place for work to get lost or
+quietly diverge from what CI actually judged. It costs a re-clone if the bot loop needs the code
+back, and that is the intended trade. When step 3b does need to push a fix, create a fresh worktree
+from the PR branch (`git fetch origin <branch>` first) and remove it again at the end of the round.
 
 Pipelining beats a strict barrier: kick off implement as soon as a plan lands rather than waiting
 for the whole planning batch, and start each review and verify the moment its implementation
@@ -261,7 +287,10 @@ heartbeat:
   branch and cherry-pick the fix so a plain fast-forward push works.
 - **Keep the machine awake for the whole run.** If the host sleeps, in-flight sub-agents die
   mid-response and you lose their work in progress. Start the OS's stay-awake utility detached at
-  the top of the run so it never holds a background-task slot, and kill it when the bash ends.
+  the top of the run so it never holds a background-task slot, and kill it when the bash ends. On
+  macOS that is `nohup caffeinate -dims -t 14400 > /dev/null 2>&1 &` (`-dims` holds off display,
+  idle, disk, and system sleep; `-t` bounds it in seconds so a crashed run cannot pin the machine
+  awake forever). On Linux, `systemd-inhibit --what=idle:sleep --mode=block sleep <seconds> &`.
   Recovery when it happens anyway: the agent's commit usually survives — check the worktree, then
   **resume the agent with a message rather than re-spawning it**, so it keeps its context, and tell
   it what changed while it was gone (rebases, new environment findings).
