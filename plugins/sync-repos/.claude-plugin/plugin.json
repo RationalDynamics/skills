@@ -1,0 +1,9 @@
+{
+  "name": "sync-repos",
+  "description": "Sync every git repo under a workspace directory: fetch, fast-forward each default branch, and rebase the checked-out branch onto origin's default. A bundled script does the mechanical pass and reports per-repo status; the skill then resolves what needs judgment — rebase conflicts, diverged default branches, and dirty trees whose edits overlap the incoming changes. Never pushes, never discards uncommitted work.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Edward Dewey",
+    "email": "ed@rationaldynamics.ai"
+  }
+}

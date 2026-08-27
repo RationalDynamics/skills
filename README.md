@@ -49,7 +49,7 @@ If you'd rather not clone, add the marketplace once and loop over the names
 claude plugin marketplace add https://github.com/RationalDynamics/skills
 for p in breakpoint neuralize evict grill-me tdd esoteric-elucidation the-orchestrator \
          storm-research costorm-session camera-lens-travel-eval scaffold-agent-team \
-         session-cost; do
+         session-cost sync-repos; do
   claude plugin install "$p@devo-skills"
 done
 ```
@@ -129,6 +129,7 @@ Codex marketplace until ported:
 - [`scaffold-agent-team`](plugins/scaffold-agent-team/skills/scaffold-agent-team/SKILL.md) — repo-specific agent-team scaffolding.
 - [`camera-lens-travel-eval`](plugins/camera-lens-travel-eval/skills/camera-lens-travel-eval/SKILL.md) — an auditable worked-example evaluator.
 - [`session-cost`](plugins/session-cost/skills/session-cost/SKILL.md) — Claude session cost and usage reporting.
+- [`sync-repos`](plugins/sync-repos/skills/sync-repos/SKILL.md) — sync a workspace of clones (fetch, fast-forward, rebase), then resolve the conflicts the script left paused.
 
 ## Develop locally
 
