@@ -138,6 +138,16 @@
       }
     },
     {
+      "name": "ticket-bash",
+      "source": "./plugins/ticket-bash",
+      "description": "Autonomous backlog burndown: take unclaimed, unambiguous tickets from tracker to draft PR with no human round-trips. Triage against an eligibility bar into a durable queue file, plan every ticket in parallel as an ambiguity gate before any code is written, implement and review in parallel worktrees, then drive CI and the review bots to green — with a circuit-breaker that escalates a redesign instead of patching the same finding twice.",
+      "category": "development",
+      "author": {
+        "name": "Edward Dewey",
+        "email": "ed@rationaldynamics.ai"
+      }
+    },
+    {
       "name": "help-me-review-a-pr",
       "source": "./plugins/help-me-review-a-pr",
       "description": "Prepare a human to review a pull request: reconcile the ticket, PR description, and diff into one statement of what is being fixed, run the machine-catchable pass first and fold its confirmed findings into a single prioritized list, then add what an automated reviewer cannot — decisions needing a person (persistence and API shape first), the prototype level's complexity budget calibrated against the repo's own norms, AI-versus-code fit, reproducibility, and misleading terminology. Ends with up to 4 reviewer questions, one thing worth learning about the system, and an approval recommendation against an explicit bar.",

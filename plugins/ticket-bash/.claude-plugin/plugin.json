@@ -1,0 +1,9 @@
+{
+  "name": "ticket-bash",
+  "description": "Autonomous backlog burndown: take unclaimed, unambiguous tickets from tracker to draft PR with no human round-trips. Triage a batch against an eligibility bar, record every verdict in a durable queue file that survives interruption, then plan all tickets in parallel as an ambiguity gate before any code is written, implement and review in parallel worktrees, verify, and open a draft PR per ticket. After the PR, drive CI and the automated review bots to green, with a circuit-breaker that escalates a redesign instead of patching the same finding twice.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Edward Dewey",
+    "email": "ed@rationaldynamics.ai"
+  }
+}
