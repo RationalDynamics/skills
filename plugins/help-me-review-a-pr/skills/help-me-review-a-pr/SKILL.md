@@ -485,7 +485,14 @@ Keep it short enough to read before the reviewer opens the diff:
    asks, and the naming problems, interleaved and ranked by what matters most in this change. Order by severity,
    or group by the part of the system under review if that reads better. **Do not group by where the
    finding came from** — a reviewer should never have to read four sections to learn what is wrong.
-   Say in one line when a lens had nothing to report, rather than giving it an empty heading.
+   **A lens with nothing to report produces nothing.** No heading, no bullet, no "AI/code fit:
+   nothing to report" line. The lenses are how you look, not a checklist to acquit — a reader does
+   not need to be told which questions came back empty, and a list of non-findings buries the
+   findings. Silence is the correct output for a lens that found nothing.
+
+   The one exception is a lens you could not *apply* — access you did not have, data the PR does not
+   expose. That is a gap in the review rather than a fact about the code, so say it, in the
+   Recommendation, where the reviewer is deciding how much to trust this.
 5. **Questions** — up to 4, with your answers and confidence.
 6. **Worth knowing** — the one teaching paragraph.
 7. **Recommendation** — the verdict, and which findings must change before merge, by category.
