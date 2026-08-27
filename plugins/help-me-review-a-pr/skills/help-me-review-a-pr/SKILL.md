@@ -54,6 +54,39 @@ Then produce:
 - **The prototype level** (see the complexity budget below). Ask if it is not stated. When unsure,
   assume the lowest level.
 
+**Calibrate the depth to what the reviewer already knows.** Run the bundled script, resolving it
+relative to this SKILL.md:
+
+```bash
+gh pr diff <PR> --name-only | python3 "<dir-of-this-SKILL.md>/scripts/reviewer_familiarity.py" --files-from -
+```
+
+It resolves the reviewer's identity, blames the hand-written files the change touches, and reports a
+per-directory authorship share with a verdict of `high`, `partial`, `low`, or `unknown`. Read it as a
+**prior on one dial — how much orientation to write — and nothing else.**
+
+- **Never print it.** No score, no percentage, no "you have not worked here." It changes what you
+  write, and the reviewer should only notice that the depth fits.
+- **`unknown` means write the full orientation.** The script says `unknown` when it cannot prove the
+  identity mapping, which is a different thing from proving unfamiliarity — treat the two as
+  opposites, never as the same answer.
+- **Use the per-directory shares, not the overall number.** One reviewer is routinely 85% of one
+  directory and 0% of another in the same PR. Orient them on the second and skip the first.
+- **Blame measures typing, not understanding.** A mechanical rename across forty files buys
+  ownership with no comprehension; designing a system someone else typed buys none. The reviewer
+  overrides it in one word, and their word wins.
+
+**Then invert it for scrutiny, which is the half that matters.** High familiarity buys *less*
+explanation and *more* challenge: the person who wrote the surrounding code is the one carrying
+assumptions nobody has questioned since they made them, so that is where the escalation lens earns
+most — "you designed this; here is the assumption it still rests on." Low familiarity gets the
+orientation instead, and its findings lean on what the code says rather than on what the reviewer
+already believes.
+
+**Redirect the teaching step; never delete it.** Familiarity does not remove Step 4, it moves it:
+teach a reviewer who wrote the diff's neighborhood about what they did not write — the caller, the
+downstream consumer, the history from before their commits.
+
 **Then read past the diff, because that is where reviewing actually happens.** The diff tells you
 what changed; it cannot tell you whether the change is right. Before forming a view, read: the
 callers of everything the change touches, the tests that pin the *old* behavior, the adjacent code
