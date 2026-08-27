@@ -1,6 +1,6 @@
 {
   "name": "help-me-review-a-pr",
-  "description": "Prepare a human to review a pull request. Reconciles the ticket, the PR description, and the diff into one statement of what is being fixed, runs the machine-catchable review pass first so it is not repeated, then surfaces only what an automated reviewer cannot: decisions that need a human (persistence and API shape first), whether the change fits its prototype level's complexity budget, whether AI is used where code belongs or the reverse, and whether the work can be reproduced and recorded. Ends with up to 4 questions the reviewer should be able to answer, one thing worth learning about the system, and an approval recommendation against an explicit bar.",
+  "description": "Prepare a human to review a pull request. Reconciles the ticket, the PR description, and the diff into one statement of what is being fixed, runs the machine-catchable review pass first and folds its confirmed findings into one prioritized list, then adds what an automated reviewer cannot: decisions that need a human (persistence and API shape first), whether the change fits its prototype level's complexity budget, whether AI is used where code belongs or the reverse, whether the work can be reproduced and recorded, and terminology that misleads. Ends with up to 4 questions the reviewer should be able to answer, one thing worth learning about the system, and an approval recommendation against an explicit bar.",
   "version": "0.1.0",
   "author": {
     "name": "Edward Dewey",

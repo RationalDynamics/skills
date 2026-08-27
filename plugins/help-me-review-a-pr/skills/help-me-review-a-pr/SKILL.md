@@ -2,9 +2,9 @@
 name: help-me-review-a-pr
 description: >
   Prepare a human to review a pull request. Reconcile the ticket, the PR description, and the diff
-  into one statement of what is being fixed; run the machine-catchable review first so the human
-  never reads it twice; then surface only what an automated reviewer cannot — decisions that need a
-  person (persistence and API shape first), whether the change fits its prototype level's complexity
+  into one statement of what is being fixed; run the machine-catchable review first and fold its
+  confirmed findings into one prioritized list; then add what an automated reviewer cannot — decisions
+  that need a person (persistence and API shape first), whether the change fits its prototype level's complexity
   budget, whether AI is used where plain code belongs or the reverse, and whether the work can be
   reproduced and recorded. Finish with up to 4 questions the reviewer should be able to answer, one
   thing worth learning about the system, and an approval recommendation against an explicit bar.
@@ -54,21 +54,33 @@ Then produce:
 - **The prototype level** (see the complexity budget below). Ask if it is not stated. When unsure,
   assume the lowest level.
 
-## Step 1 — run the machine pass first, then subtract it
+## Step 1 — run the machine pass first, and fold it in
 
-Do this before forming your own opinions, so you do not spend the human's attention on it:
+Do this before forming your own opinions, so the machine's findings compete with yours on merit
+rather than arriving after you have committed to a story:
 
 - Run the repo's own automated review over the diff, and collect the findings already posted on the
   PR by review bots and code-scanning checks.
-- **Deduplicate ruthlessly.** Anything a bot already said is not your output. The human does not
-  need it twice, and repeating it buries the findings only you produced.
-- Keep a machine finding only if you can add something: it is wrong, it is right for a reason the
-  bot did not give, or it is a symptom of a design problem the bot cannot see. Say which.
-- Where you disagree with a bot, say so explicitly and why. An unanswered bot finding in the
-  reviewer's queue costs them the same time as a real one.
+- **Verify each one against the code.** A bot finding is a claim, not a fact. Say which ones you
+  confirmed, and where you disagree, say so with the reason — an unanswered bot finding costs the
+  reviewer the same time as a real one, and a wrong one that nobody refuted gets "fixed" later by
+  someone with less context.
+- **Deduplicate to one entry per problem**, however many sources raised it. Deduplication is about
+  the problem, not the source: never drop a real finding because a bot got there first.
 
-Report this as one line — "the machine pass found N things, all mechanical, listed at the end" —
-not as the body of your review.
+Then **merge everything into the one prioritized list** described in the output format. Do not give
+the machine pass its own section, its own appendix, or its own paragraph at the end.
+
+**One list, and origin is not how it is organized.** The reviewer wants to know what matters most in
+this change, not which mechanism noticed it. Group the list by severity, or by the part of the system
+under review — never by "machine finding" versus "budget concern" versus "naming", and never by
+which lens produced it. Attribution belongs in a parenthetical on the entry at most, because it
+tells the reviewer where to reply and nothing more.
+
+**A machine finding drives the verdict exactly like one you found yourself.** If a bot or a
+code-scanning check found a real regression or a reachable security hole, it is a blocking item under
+Step 5 and it goes at the top of the list. The machine pass having found it is irrelevant to how much
+it matters.
 
 ## Step 2 — the five judgment lenses
 
@@ -174,7 +186,8 @@ is not something to cut; it is something to *add* a clause for. When you find on
 it is not over-engineering.
 
 Close this lens with a **rough shape if the author accepts the cuts**: target sizes, what remains,
-and the follow-up work they no longer owe. A cut list without a target is easy to argue with; a
+and the follow-up work they no longer owe. The cuts themselves are entries in the single findings
+list, ranked among everything else — not a separate verdict on the PR's size. A cut list without a target is easy to argue with; a
 target is easy to agree to.
 
 **Worked example (RD).** Platform commit `36a17526c` resized a contract from a review of exactly this
@@ -286,35 +299,45 @@ This is the compounding value of a review. It is worth the space.
 
 ## Step 5 — approval recommendation
 
-Recommend against an explicit bar, so the author knows which findings are blocking and why. Adjust
-the bar to your team's; this is RD's current one.
+Recommend against an explicit bar, so the author knows which findings must change before merge and
+why. Adjust the bar to your team's; this is RD's current one.
 
-**Blocking:**
+**The bar weighs consequence against effort, and effort is an input to the decision — not a category
+of finding.** Cheapness never makes something important. What it does is remove the excuse to defer:
+a finding whose fix is about 2 added lines should be applied now, because a ticket plus a context
+reload plus a second review costs more than the fix. So a small-consequence finding with a trivial
+fix must change before merge, and a large-consequence finding must change regardless of what it
+costs. What effort decides is *how the review closes* — see the verdicts below.
+
+**Must change before merge:**
 
 - **Regressions.** Something that worked no longer does.
 - **Immediately exploitable security holes.** Not theoretical ones — reachable now.
-- **Anything quick to correct.** If the fix is at most about 2 added lines, it blocks. Deferring a
-  two-line fix costs a ticket, a context reload, and a second review — more than the fix.
 - **Bad architecture, or choices that will accrete badness.** The pattern others will copy, the
   abstraction that will grow branches, the shortcut that becomes load-bearing.
 - **Major untracked gaps.** A significant missing piece with no ticket. The ticket is the fix here,
   not the code.
+- **Anything correctable in about 2 lines**, by the reasoning above, whatever its consequence.
 
-**Not blocking:**
+**Does not block:**
 
 - **Gaps.** Known, bounded, and written down. Experimental code is allowed to be incomplete. A gap
   with a ticket and a level at which it comes due is a plan, not a defect.
+- **Preferences.** Say them once, mark them optional, and do not spend the author's attention twice.
 
-State the verdict in these terms:
+**Verdicts differ on whether another round is needed, not on whether the findings matter:**
 
-- **APPROVE** — nothing blocking. Nits listed separately and explicitly optional.
-- **APPROVE WITH NITS** — nothing blocking; the ≤2-line corrections are listed and expected to be
-  applied before merge.
-- **COMMENT / ESCALATE** — nothing blocking mechanically, but one or more decisions need a human's
-  ruling before this is a good idea. Name them.
-- **REQUEST CHANGES** — at least one blocking item above. Quote it and say which category.
+- **APPROVE** — nothing must change before merge. Optional preferences listed separately.
+- **APPROVE WITH NITS** — the only must-change findings are trivial-effort corrections you trust the
+  author to apply without a re-review. This is the same bar closed more cheaply, not a lower one:
+  list each correction concretely enough to apply without thinking, and say plainly that merging
+  without them is not the approval you gave.
+- **COMMENT / ESCALATE** — nothing mechanically blocking, but a decision needs a human's ruling
+  before this is a good idea. Name it.
+- **REQUEST CHANGES** — something must change and needs another look: a high-consequence item, a
+  cheap fix the author is likely to dispute, or enough small ones that re-reading is warranted.
 
-Never let the escalations decide themselves by hiding in a list of nits. If a persistence or API
+Never let an escalation decide itself by hiding among the optional items. If a persistence or API
 decision is open, the verdict says so.
 
 ## Output format
@@ -324,15 +347,15 @@ Keep it short enough to read before the reviewer opens the diff:
 1. **What we are fixing** — the unified statement, plus any ticket/PR/diff divergence.
 2. **Level and size** — prototype level; hand-written vs generated lines.
 3. **Needs your ruling** — the escalations, most expensive first. Usually 0–3 items.
-4. **Complexity budget** — the calibration numbers, the ranked cuts, the target shape. Skip the
-   section entirely when the change is proportionate, and say so in one line.
-5. **AI/code fit, experimentability, naming** — only where there is something to say. A
-   misleading term goes here with its proposed replacement, unless it is already in a published
-   contract, in which case it is an escalation in section 3.
-6. **Questions** — up to 4, with your answers and confidence.
-7. **Worth knowing** — the one teaching paragraph.
-8. **Recommendation** — verdict, blocking items by category, then the machine-pass findings as an
-   appendix.
+4. **Findings — one prioritized list.** Everything else goes here: your own findings, the confirmed
+   machine findings, the complexity-budget cuts, the AI/code-fit and experimentability asks, and the
+   naming problems, interleaved and ranked by what matters most in this change. Order by severity,
+   or group by the part of the system under review if that reads better. **Do not group by where the
+   finding came from** — a reviewer should never have to read four sections to learn what is wrong.
+   Say in one line when a lens had nothing to report, rather than giving it an empty heading.
+5. **Questions** — up to 4, with your answers and confidence.
+6. **Worth knowing** — the one teaching paragraph.
+7. **Recommendation** — the verdict, and which findings must change before merge, by category.
 
 Write for a person who will act on it: no hedging, no restating the diff, and quantify instead of
 reaching for "large", "complex", or "significant".

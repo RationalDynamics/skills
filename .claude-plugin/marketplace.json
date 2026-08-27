@@ -140,7 +140,7 @@
     {
       "name": "help-me-review-a-pr",
       "source": "./plugins/help-me-review-a-pr",
-      "description": "Prepare a human to review a pull request: reconcile the ticket, PR description, and diff into one statement of what is being fixed, run the machine-catchable pass first and subtract it, then surface only what an automated reviewer cannot — decisions needing a person (persistence and API shape first), the prototype level's complexity budget with calibration against the repo's own norms, AI-versus-code fit, reproducibility, and misleading terminology. Ends with up to 4 reviewer questions, one thing worth learning about the system, and an approval recommendation against an explicit bar.",
+      "description": "Prepare a human to review a pull request: reconcile the ticket, PR description, and diff into one statement of what is being fixed, run the machine-catchable pass first and fold its confirmed findings into a single prioritized list, then add what an automated reviewer cannot — decisions needing a person (persistence and API shape first), the prototype level's complexity budget calibrated against the repo's own norms, AI-versus-code fit, reproducibility, and misleading terminology. Ends with up to 4 reviewer questions, one thing worth learning about the system, and an approval recommendation against an explicit bar.",
       "category": "development",
       "author": {
         "name": "Edward Dewey",
