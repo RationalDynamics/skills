@@ -49,7 +49,7 @@ If you'd rather not clone, add the marketplace once and loop over the names
 claude plugin marketplace add https://github.com/RationalDynamics/skills
 for p in breakpoint neuralize evict grill-me tdd esoteric-elucidation the-orchestrator \
          storm-research costorm-session camera-lens-travel-eval scaffold-agent-team \
-         session-cost sync-repos; do
+         session-cost sync-repos help-me-review-a-pr; do
   claude plugin install "$p@devo-skills"
 done
 ```
@@ -130,6 +130,7 @@ Codex marketplace until ported:
 - [`camera-lens-travel-eval`](plugins/camera-lens-travel-eval/skills/camera-lens-travel-eval/SKILL.md) — an auditable worked-example evaluator.
 - [`session-cost`](plugins/session-cost/skills/session-cost/SKILL.md) — Claude session cost and usage reporting.
 - [`sync-repos`](plugins/sync-repos/skills/sync-repos/SKILL.md) — sync a workspace of clones (fetch, fast-forward, rebase), then resolve the conflicts the script left paused.
+- [`help-me-review-a-pr`](plugins/help-me-review-a-pr/skills/help-me-review-a-pr/SKILL.md) — prepares a human to review a PR: runs the machine pass and subtracts it, then surfaces the decisions, complexity-budget cuts, and naming problems an AI reviewer will not raise.
 
 ## Develop locally
 
