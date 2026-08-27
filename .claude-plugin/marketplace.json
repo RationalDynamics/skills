@@ -118,6 +118,16 @@
       }
     },
     {
+      "name": "sync-repos",
+      "source": "./plugins/sync-repos",
+      "description": "Sync every git repo under a workspace directory — fetch, fast-forward each default branch, rebase the checked-out branch onto origin's default — then resolve what needs judgment: paused rebase conflicts, diverged default branches, and dirty trees whose edits overlap the incoming changes. Never pushes, never discards uncommitted work.",
+      "category": "development",
+      "author": {
+        "name": "Edward Dewey",
+        "email": "ed@rationaldynamics.ai"
+      }
+    },
+    {
       "name": "session-cost",
       "source": "./plugins/session-cost",
       "description": "Report token usage, wall-clock time, and per-model cost for Claude Code sessions from the on-disk ~/.claude/projects JSONL transcripts — grouped by session or git worktree, with a compare mode. Dedups streamed/re-serialized usage and prices per model so totals reconcile with ccusage. Read-only.",
