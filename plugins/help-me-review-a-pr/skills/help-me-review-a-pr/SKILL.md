@@ -58,20 +58,30 @@ Then produce:
 relative to this SKILL.md:
 
 ```bash
-gh pr diff <PR> --name-only | python3 "<dir-of-this-SKILL.md>/scripts/reviewer_familiarity.py" --files-from -
+gh api repos/OWNER/REPO/pulls/N/files --paginate \
+  --jq '.[]|"\(.additions)\t\(.deletions)\t\(.filename)"' \
+  | python3 "DIR-OF-THIS-SKILL/scripts/reviewer_familiarity.py" --churn-from -
 ```
 
-It resolves the reviewer's identity, blames the hand-written files the change touches, and reports a
-per-directory authorship share with a verdict of `high`, `partial`, `low`, or `unknown`. Read it as a
-**prior on one dial — how much orientation to write — and nothing else.**
+Feed it churn, not just filenames: the share is weighted by lines changed per file, so a large file
+the change barely touches cannot outvote the module the change is actually in. On a local branch,
+`--diff-range origin/main...HEAD` computes the same thing without the forge. Passing bare filenames
+still works and falls back to equal weights, which it warns about.
+
+It resolves the reviewer's identity, blames the files the change touches, and prints an indented
+tree with a share at every file and every directory, plus a verdict of `high`, `partial`, `low`, or
+`unknown`. Read it as a **prior on one dial — how much orientation to write — and nothing else.**
 
 - **Never print it.** No score, no percentage, no "you have not worked here." It changes what you
   write, and the reviewer should only notice that the depth fits.
 - **`unknown` means write the full orientation.** The script says `unknown` when it cannot prove the
   identity mapping, which is a different thing from proving unfamiliarity — treat the two as
   opposites, never as the same answer.
-- **Use the per-directory shares, not the overall number.** One reviewer is routinely 85% of one
-  directory and 0% of another in the same PR. Orient them on the second and skip the first.
+- **Read the tree, not the headline.** The overall number is one dial; the tree is the instruction.
+  One reviewer is routinely 86% of `internal/session/` and 0% of `integration/` in the same PR —
+  orient them on the second and skip the first. A `~` marks a share inferred from the directory
+  because the file is new, which is a weaker claim than a blamed file: treat it as the area, not
+  the code.
 - **Blame measures typing, not understanding.** A mechanical rename across forty files buys
   ownership with no comprehension; designing a system someone else typed buys none. The reviewer
   overrides it in one word, and their word wins.
