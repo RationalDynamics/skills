@@ -161,6 +161,8 @@ def main():
                     help="reviewer email, name, or forge login; repeatable "
                          "(default: git config + gh api user + .mailmap)")
     ap.add_argument("--max-files", type=int, default=25, help="blame at most N files (default: 25)")
+    ap.add_argument("--dir-sample", type=int, default=3,
+                    help="for a directory whose changed files are all new, blame N existing siblings (default: 3)")
     ap.add_argument("--exclude", action="append", default=list(DEFAULT_EXCLUDES), help="extra glob to treat as generated")
     ap.add_argument("--json", action="store_true", help="emit JSON")
     args = ap.parse_args()
@@ -180,9 +182,28 @@ def main():
     ignore_revs = ignore_revs if os.path.exists(ignore_revs) else None
 
     files, raw_count = changed_files(repo, args)
-    files = [f for f in files if os.path.exists(os.path.join(repo, f))]
-    truncated = max(0, len(files) - args.max_files)
-    files = files[: args.max_files]
+
+    # A file the change ADDS has no history to blame, and a PR that is mostly
+    # new files would otherwise be scored off whichever pre-existing file it
+    # happened to touch. Familiarity with new code is really familiarity with
+    # the area it lands in, so fall back to blaming existing siblings of the
+    # directory. Without this, an author's own greenfield PR reads as LOW.
+    existing = [f for f in files if os.path.exists(os.path.join(repo, f))]
+    seen = set(existing)
+    new_files = [f for f in files if f not in seen]
+    context_dirs = []
+    covered = {os.path.dirname(f) or "." for f in existing}
+    for d in dict.fromkeys(os.path.dirname(f) or "." for f in new_files):
+        if d in covered:
+            continue
+        siblings = [x for x in git(repo, "ls-files", "--", d).split()
+                    if (os.path.dirname(x) or ".") == d and not excluded(x, args.exclude)][: args.dir_sample]
+        if siblings:
+            context_dirs.append(d)
+            existing.extend(siblings)
+
+    truncated = max(0, len(existing) - args.max_files)
+    files = existing[: args.max_files]
 
     per_dir = defaultdict(lambda: [0, 0])  # dir -> [reviewer_lines, total_lines]
     repo_reviewer = repo_total = 0
@@ -219,6 +240,11 @@ def main():
     else:
         verdict, reason = "partial", f"reviewer authored {share:.0%} of the blamed lines in the touched files"
 
+    if new_files:
+        detail = f" ({', '.join(context_dirs)})" if context_dirs else ""
+        warnings.append(
+            f"{len(new_files)} changed file(s) are new and have no history; "
+            f"{'measured their directories instead' + detail if context_dirs else 'no existing siblings to measure'}")
     if 0 < commits < 3:
         warnings.append(f"identity has only {commits} authored commit(s) in this repo; the share is thin evidence")
     if not ignore_revs:
@@ -234,6 +260,7 @@ def main():
     if args.json:
         print(json.dumps({
             "verdict": verdict, "reason": reason, "share": round(share, 4),
+            "files_new": len(new_files), "context_dirs": context_dirs,
             "identity": {"seed": seed, "emails": sorted(emails), "names": sorted(names), "commits": commits},
             "files_blamed": len(files), "files_skipped": truncated,
             "directories": dirs, "warnings": warnings,
