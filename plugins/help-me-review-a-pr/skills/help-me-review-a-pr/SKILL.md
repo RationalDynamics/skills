@@ -54,6 +54,13 @@ Then produce:
 - **The prototype level** (see the complexity budget below). Ask if it is not stated. When unsure,
   assume the lowest level.
 
+**Then read past the diff, because that is where reviewing actually happens.** The diff tells you
+what changed; it cannot tell you whether the change is right. Before forming a view, read: the
+callers of everything the change touches, the tests that pin the *old* behavior, the adjacent code
+the change assumes is true, and the config or migration that has to move with it. Most real defects
+are a correct-looking hunk against an assumption that does not hold three files away — the diff is
+where you start, not where you stop.
+
 ## Step 1 — run the machine pass first, and fold it in
 
 Do this before forming your own opinions, so the machine's findings compete with yours on merit
@@ -81,6 +88,26 @@ tells the reviewer where to reply and nothing more.
 code-scanning check found a real regression or a reachable security hole, it is a blocking item under
 Step 5 and it goes at the top of the list. The machine pass having found it is irrelevant to how much
 it matters.
+
+## Every finding carries its evidence
+
+This applies to all of them — yours, the machine's, and the answers in Step 3.
+
+- **State a concrete failure scenario:** the inputs or state that reach this code, and the wrong
+  output, crash, or wrong decision that results. Not "this could break" — *what* breaks, from *what*
+  input. A finding that cannot be given a failure scenario is a preference, not a defect: say so and
+  mark it optional. This single requirement is what kills plausible-but-wrong findings, and it is
+  the discipline an automated pass most often skips.
+- **Mark each finding CONFIRMED or PLAUSIBLE.** CONFIRMED means you traced it in the code and can
+  name where. PLAUSIBLE means it is consistent with what you read but you did not prove it — which
+  is a fine thing to report, and a dishonest thing to report as certain.
+- **Cite `file:line` for every claim about code the diff does not contain.** A review that reads
+  beyond the diff — which it must — makes claims the reviewer cannot check by looking at the PR page.
+  Those claims are exactly the ones that go wrong, because they come from memory or inference rather
+  than from the hunk in front of you. So either name the file and line you read, or mark the claim
+  unverified. Never state an unsourced claim about unchanged code at high confidence.
+- **Distinguish "I checked and it is fine" from "I did not check."** Both are useful; conflating them
+  is how a reviewer ends up trusting a gap.
 
 ## Step 2 — the five judgment lenses
 
@@ -285,8 +312,12 @@ Good questions are specific to this diff and have a checkable answer:
 - "If this model call returns nothing, what does the user see?"
 - "Where does the number in the PR description come from?"
 
-Give your own best answer to each, sourced from the diff, with an explicit confidence — and say
-plainly when the answer is not in the PR. "I cannot answer this from the diff" is a finding.
+Give your own best answer to each, with an explicit confidence, and **source it**: quote the diff
+where the answer is in the diff, and cite `file:line` where the answer came from code outside it. If
+you could not check, say "unverified" rather than assigning a confidence — a confident answer drawn
+from unchanged code you did not open is the most expensive mistake this skill can make, because it
+reads exactly like the four answers that were checked. "I cannot answer this from what I read" is
+itself a finding.
 
 ## Step 4 — teach the reviewer one thing
 
@@ -347,9 +378,10 @@ Keep it short enough to read before the reviewer opens the diff:
 1. **What we are fixing** — the unified statement, plus any ticket/PR/diff divergence.
 2. **Level and size** — prototype level; hand-written vs generated lines.
 3. **Needs your ruling** — the escalations, most expensive first. Usually 0–3 items.
-4. **Findings — one prioritized list.** Everything else goes here: your own findings, the confirmed
-   machine findings, the complexity-budget cuts, the AI/code-fit and experimentability asks, and the
-   naming problems, interleaved and ranked by what matters most in this change. Order by severity,
+4. **Findings — one prioritized list**, each with its failure scenario, its CONFIRMED/PLAUSIBLE
+   mark, and a `file:line` for anything outside the diff. Everything goes here: your own findings,
+   the confirmed machine findings, the complexity-budget cuts, the AI/code-fit and experimentability
+   asks, and the naming problems, interleaved and ranked by what matters most in this change. Order by severity,
    or group by the part of the system under review if that reads better. **Do not group by where the
    finding came from** — a reviewer should never have to read four sections to learn what is wrong.
    Say in one line when a lens had nothing to report, rather than giving it an empty heading.
