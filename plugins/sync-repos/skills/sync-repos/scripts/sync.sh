@@ -65,7 +65,13 @@ echo
 
 for repo in "${repos[@]}"; do
   name="$(basename "$repo")"
-  out="$(
+  # NOTE: unquoted on purpose. An assignment never word-splits a command
+  # substitution, so `out=$(...)` and `out="$(...)"` store the same bytes — but
+  # with the quotes, bash tracks quote state through the comments INSIDE the
+  # substitution, so an odd number of apostrophes in them ("worktree's") makes
+  # the parser run to EOF looking for a closing quote and the whole script dies.
+  # Note that shellcheck does not catch it; dropping the quotes removes the trap.
+  out=$(
     cd "$repo" || { echo "[$name] ERROR (cannot cd into repo)"; exit 9; }
 
     git rev-parse --git-dir >/dev/null 2>&1 || { echo "[$name] ERROR (not a git repo)"; exit 9; }
@@ -137,8 +143,16 @@ for repo in "${repos[@]}"; do
     before="$(git rev-parse HEAD)"
 
     # Update the local default branch if it isn't the one checked out.
+    #
+    # A bare update-ref would move the branch under ANOTHER worktree that has it
+    # checked out: that worktree's HEAD would jump without its index or working
+    # tree moving, so every difference between the old and new tip shows up there
+    # as spurious local changes. Leave it alone in that case and say so.
+    default_pinned=""
     if [ "$cur" != "$default" ]; then
-      if git show-ref --verify --quiet "refs/heads/$default"; then
+      if git worktree list --porcelain | grep -qx "branch refs/heads/$default"; then
+        default_pinned=" (local '$default' left alone: checked out in another worktree)"
+      elif git show-ref --verify --quiet "refs/heads/$default"; then
         if git merge-base --is-ancestor "$default" "origin/$default"; then
           git update-ref "refs/heads/$default" "refs/remotes/origin/$default"
         else
@@ -157,26 +171,29 @@ for repo in "${repos[@]}"; do
       after="$(git rev-parse HEAD)"
       if [ "$stashed" -eq 1 ]; then
         if git stash pop >/dev/null 2>&1; then :; else
-          echo "[$name] CONFLICT (stash pop conflicted on '$cur')"; exit 5
+          echo "[$name] CONFLICT (stash pop conflicted on '$cur'; the rebase completed, the auto-stash is still in 'git stash list')"; exit 5
         fi
       fi
       if [ "$before" = "$after" ] && [ "$stashed" -eq 0 ]; then
-        echo "[$name] UP_TO_DATE ($cur)"; exit 0
+        echo "[$name] UP_TO_DATE ($cur)${default_pinned}"; exit 0
       else
-        [ "$stashed" -eq 1 ] && { echo "[$name] STASHED+UPDATED ($cur)"; exit 11; }
-        echo "[$name] UPDATED ($cur rebased onto origin/$default)"; exit 10
+        [ "$stashed" -eq 1 ] && { echo "[$name] STASHED+UPDATED ($cur)${default_pinned}"; exit 11; }
+        echo "[$name] UPDATED ($cur rebased onto origin/$default)${default_pinned}"; exit 10
       fi
     else
       # Rebase failed. If a rebase is in progress it's a conflict -> leave it.
       if [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] || \
          [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]; then
+        if [ "$stashed" -eq 1 ]; then
+          echo "[$name] CONFLICT (rebasing '$cur' onto origin/$default — left paused; an auto-stash 'sync.sh auto-stash' is HELD and must be popped after the rebase completes)"; exit 5
+        fi
         echo "[$name] CONFLICT (rebasing '$cur' onto origin/$default — left paused)"; exit 5
       else
         [ "$stashed" -eq 1 ] && git stash pop >/dev/null 2>&1
         echo "[$name] ERROR rebase failed (no conflict state)"; exit 9
       fi
     fi
-  )"
+  )
   code=$?
   echo "$out"
 

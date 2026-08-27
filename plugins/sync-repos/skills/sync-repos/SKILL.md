@@ -28,9 +28,22 @@ The first argument is the directory containing the repos. Resolve it in this ord
 Add `--stash` only if the user asked to include uncommitted changes.
 
 The script fetches, fast-forwards each repo's default branch, and rebases the
-checked-out branch onto `origin/<default>`. It never pushes and never touches a
-dirty working tree (unless `--stash`). Read the `SUMMARY` and `NEEDS ATTENTION`
-sections of its output.
+checked-out branch onto `origin/<default>`. Read the `SUMMARY` and
+`NEEDS ATTENTION` sections of its output.
+
+**What it does to a dirty repo, precisely** — this matters, because it is not
+"nothing":
+
+- Nothing upstream to integrate → left completely alone, reported
+  `DIRTY_UP_TO_DATE`.
+- Local edits that do **not** overlap the incoming changes → **auto-stashed,
+  rebased, and popped, with or without `--stash`**, reported `STASHED+UPDATED`.
+  The pop is clean by construction, since the two file sets are disjoint.
+- Local edits that **do** overlap → left alone, reported `SKIP_DIRTY`, unless
+  `--stash` forces the stash/rebase/pop anyway.
+
+So the script does touch a dirty tree by default; what it never does is push, or
+discard uncommitted work.
 
 ## Step 2 — handle what needs attention
 
@@ -40,6 +53,15 @@ it). Work through each repo listed under `NEEDS ATTENTION`:
 ### CONFLICT
 A rebase (or stash pop) is paused with conflicts. `cd` into the repo and:
 
+0. **Check for a held auto-stash first.** If the repo was dirty, the script
+   stashed the edits before rebasing, and a rebase that then conflicts leaves
+   that stash **unpopped** — it cannot be popped mid-rebase. The status detail
+   says so when it happens, but confirm with
+   `git stash list | grep 'sync.sh auto-stash'`. **Pop it after the rebase
+   finishes** (`git rebase --continue` to completion, then `git stash pop`), and
+   resolve any pop conflict the same way as below. Aborting the rebase also
+   leaves the stash held — pop it then too. Forgetting this step silently strands
+   the user's uncommitted work in a stash they never made.
 1. `git status` and `git diff` to see the conflicted files and understand both
    sides. `git log --oneline -5 origin/<default>` and `git rebase --show-current-patch`
    help show what the incoming commit was trying to do.
@@ -157,3 +179,9 @@ ran, include what was removed.
   everything is clean.
 - The workspace root does not need to be a git repo itself; the script walks its
   immediate children looking for repos.
+- The script will **not** fast-forward a default branch that another worktree has
+  checked out — moving the ref there would leave that checkout's HEAD ahead of its
+  own index and working tree, showing every intervening change as spurious local
+  edits. It says `local '<default>' left alone: checked out in another worktree`
+  and still rebases the branch in hand onto `origin/<default>`, which is the part
+  that matters. Fast-forward that other checkout from inside it.
