@@ -145,6 +145,30 @@ under review — never by "machine finding" versus "budget concern" versus "nami
 which lens produced it. Attribution belongs in a parenthetical on the entry at most, because it
 tells the reviewer where to reply and nothing more.
 
+**Never write into the user's checkout.** The working tree you are running in belongs to someone —
+often to another session editing it right now — and a review has no business changing it. Do not
+create a branch, do not switch HEAD, do not stash, do not check the PR out in place. `git fetch
+origin pull/N/head:some-branch` is the specific trap: it looks read-only, and it leaves a branch
+behind that outlives the review.
+
+When the review genuinely needs the PR's files on disk — to run one test, to read a file the diff
+shows only in part, to check a path the patch does not carry — use the bundled script, which creates
+a **detached** worktree outside the repository:
+
+```bash
+WT=$(bash "DIR-OF-THIS-SKILL/scripts/pr_worktree.sh" add <PR>)   # prints the path
+# ... read and run things under $WT ...
+bash "DIR-OF-THIS-SKILL/scripts/pr_worktree.sh" remove <PR>
+```
+
+`--detach` means no branch is created, and the primary checkout's HEAD, index, and working tree are
+never touched. `remove` refuses to delete a dirty worktree rather than discarding whatever was
+written there; `list` shows any left behind by an interrupted run. Remove it when you are done — a
+stale worktree still holds a registration in the real repository.
+
+Most reviews never need this. Reach for it only when reading the diff and the files at HEAD is
+genuinely not enough.
+
 **Never re-run a check the forge already ran.** The CI results are in `checks.md`, with the
 conclusion and a log URL for each. Running the test suite, the linter, or the type-checker locally to
 learn what CI has already reported produces no information and costs real time — it is the
