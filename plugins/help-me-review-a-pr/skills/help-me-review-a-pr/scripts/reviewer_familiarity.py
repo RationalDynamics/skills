@@ -26,6 +26,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import defaultdict
@@ -169,12 +170,44 @@ def changed_files(repo, args):
     return kept, churn, len(files), weighting
 
 
-def blame_file(repo, path, ignore_revs):
-    """author-email -> surviving line count for one file at HEAD."""
+def resolve_base(repo, explicit, diff_range):
+    """The revision to blame: the tree the change lands in, before it landed.
+
+    Not HEAD. HEAD is whatever the reviewer happens to have checked out, and it
+    changes the answer: standing on the PR branch, every file the change ADDS
+    already exists and blames to its author, so the sibling-inference path below
+    never runs and the new code reads as 0% familiar; standing on main, those
+    same files are new and their share is inferred from the area. One PR, two
+    verdicts, decided by an accident of what was checked out. The merge base is
+    the same tree from either branch.
+    """
+    if explicit:
+        return explicit
+    pairs = []
+    if diff_range:
+        left, sep, right = diff_range.partition("...")
+        if sep:
+            pairs.append((left or "HEAD", right or "HEAD"))
+    pairs += [("HEAD", r) for r in ("origin/HEAD", "origin/main", "origin/master")]
+    for a, b in pairs:
+        mb = git(repo, "merge-base", a, b, check=False).strip().splitlines()
+        if mb:
+            return mb[0]
+    return None
+
+
+def exists_at(repo, rev, path):
+    p = subprocess.run(["git", "-C", repo, "cat-file", "-e", f"{rev}:{path}"],
+                       capture_output=True)
+    return p.returncode == 0
+
+
+def blame_file(repo, rev, path, ignore_revs):
+    """author-email -> surviving line count for one file at `rev`."""
     cmd = ["blame", "--line-porcelain"]
     if ignore_revs:
         cmd.append(f"--ignore-revs-file={ignore_revs}")
-    out = git(repo, *cmd, "HEAD", "--", path, check=False)
+    out = git(repo, *cmd, rev, "--", path, check=False)
     counts = defaultdict(int)
     for line in out.splitlines():
         if line.startswith("author-mail <"):
@@ -182,9 +215,9 @@ def blame_file(repo, path, ignore_revs):
     return counts
 
 
-def blame_share(repo, path, emails, ignore_revs):
-    """(reviewer_lines, total_lines) for one existing file."""
-    counts = blame_file(repo, path, ignore_revs)
+def blame_share(repo, rev, path, emails, ignore_revs):
+    """(reviewer_lines, total_lines) for one file that exists at `rev`."""
+    counts = blame_file(repo, rev, path, ignore_revs)
     return sum(n for e, n in counts.items() if e in emails), sum(counts.values())
 
 
@@ -258,6 +291,7 @@ def main():
                     help="for a directory whose changed files are all new, blame N existing siblings (default: 3)")
     ap.add_argument("--exclude", action="append", default=list(DEFAULT_EXCLUDES),
                     help="extra glob to treat as generated")
+    ap.add_argument("--base", help="revision to blame (default: merge-base with origin's default branch)")
     ap.add_argument("--json", action="store_true", help="emit JSON")
     args = ap.parse_args()
 
@@ -275,6 +309,11 @@ def main():
     ignore_revs_path = os.path.join(repo, ".git-blame-ignore-revs")
     ignore_revs = ignore_revs_path if os.path.exists(ignore_revs_path) else None
 
+    base = resolve_base(repo, args.base, args.diff_range)
+    base_fallback = base is None
+    if base_fallback:
+        base = "HEAD"
+
     files, churn, raw_count, weighting = changed_files(repo, args)
     warnings = []
 
@@ -283,13 +322,13 @@ def main():
     # existing siblings in the same directory: familiarity with new code is
     # familiarity with the area. Without this, greenfield work by the author of
     # the surrounding module reads as maximally unfamiliar.
-    existing = [f for f in files if os.path.exists(os.path.join(repo, f))]
+    existing = [f for f in files if exists_at(repo, base, f)]
     new_files = [f for f in files if f not in set(existing)]
 
     blamed = 0
     entries, dir_ctx, context_dirs = [], {}, []
     for f in existing[: args.max_files]:
-        mine, tot = blame_share(repo, f, emails, ignore_revs)
+        mine, tot = blame_share(repo, base, f, emails, ignore_revs)
         blamed += 1
         entries.append({"path": f, "churn": churn.get(f, 1), "inferred": False,
                         "share": (mine / tot) if tot else 0.0,
@@ -298,11 +337,12 @@ def main():
     for f in new_files:
         d = os.path.dirname(f) or "."
         if d not in dir_ctx:
-            siblings = [x for x in git(repo, "ls-files", "--", d).split()
+            listing = git(repo, "ls-tree", "-r", "--name-only", base, "--", d, check=False)
+            siblings = [x for x in listing.split()
                         if (os.path.dirname(x) or ".") == d and not excluded(x, args.exclude)][: args.dir_sample]
             m = t = 0
             for sib in siblings:
-                a, b = blame_share(repo, sib, emails, ignore_revs)
+                a, b = blame_share(repo, base, sib, emails, ignore_revs)
                 m += a; t += b
                 blamed += 1
             dir_ctx[d] = (m / t) if t else None
@@ -346,6 +386,10 @@ def main():
                         f"{'shares inferred from directory siblings' + detail if context_dirs else 'no existing siblings to measure'}")
     if 0 < commits < 3:
         warnings.append(f"identity has only {commits} authored commit(s) here; the share is thin evidence")
+    if base_fallback:
+        warnings.append("no merge base found (no origin, or an unrelated history): blaming HEAD, so "
+                        "files this change adds are scored against the reviewer's own checkout. "
+                        "Pass --base to name the tree the change lands in")
     if not ignore_revs:
         warnings.append("no .git-blame-ignore-revs: formatting and regeneration commits inflate whoever ran them")
     if len(existing) > args.max_files:
@@ -357,6 +401,7 @@ def main():
     if args.json:
         print(json.dumps({
             "verdict": verdict, "reason": reason, "share": round(share, 4), "weighting": weighting,
+            "base": base,
             "identity": {"seed": seed, "emails": sorted(emails), "names": sorted(names), "commits": commits},
             "files": [{k: (round(v, 4) if k == "share" else v) for k, v in e.items()} for e in entries],
             "files_blamed": blamed, "files_new": len(new_files), "context_dirs": context_dirs,
@@ -368,6 +413,8 @@ def main():
     print(f"identity: {seed} -> {len(emails)} address(es), {commits} commits")
     if len(emails) > 1:
         print(f"  resolved: {', '.join(sorted(emails))}")
+    print(f"blamed at {base[:12] if not base_fallback else base} "
+          f"(the tree the change lands in, not the reviewer's checkout)")
     print(f"blamed {blamed} file(s) for {len(entries)} changed file(s); "
           f"~ marks a share inferred from the directory because the file is new")
     print(f"{share:>4.0%}  (overall)  [{tree['churn']} changed]")
