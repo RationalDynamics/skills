@@ -10,7 +10,9 @@ description: >
   thing worth learning about the system, and an approval recommendation against an explicit bar.
   Use when asked to "review this PR", "do a code review of this pull request", "help me review this", "review
   this with me", or to prepare for a review — whenever a person, not a bot, will be the one
-  approving.
+  approving. Takes the PR number or URL as an argument; given none, resolves the current branch's
+  PR and asks which to review when that is ambiguous. Also covers posting the review to the forge
+  as line-anchored comments, which happens only when explicitly asked.
 ---
 
 # Help me review a PR
@@ -32,7 +34,29 @@ An automated reviewer has two structural blind spots, and they are the whole poi
 Cost and consequence. Everything below exists to put those two in front of a person.
 
 There is also a secondary purpose worth optimizing for: **a PR review is how a reviewer learns how
-their own system works.** A review that only lists defects wastes that. Step 5 is not decoration.
+their own system works.** A review that only lists defects wastes that. Step 4 is not decoration.
+
+## Which PR — resolve the target before anything else
+
+**Take the target from the argument.** The skill accepts a PR number, a URL, or `owner/repo#N`. Use
+what the user typed and go. This is the normal case and it needs no confirmation.
+
+**With no argument, resolve one — and never silently review whichever branch you are sitting on.**
+The working tree is frequently checked out to something unrelated to the PR the user means, and it
+may belong to another session editing it right now, so the current branch is a guess rather than an
+answer. Resolve it, then decide:
+
+```bash
+gh pr view --json number,title,url,state,author    # the current branch's PR, if it has one
+```
+
+- **Exactly one OPEN PR** — name it in one line ("Reviewing #555, *title*") and proceed.
+- **None, several, or only a MERGED or CLOSED one** — ask which PR to review, offering what you
+  found. Reviewing a merged PR after the fact is legitimate; it is never a safe default.
+
+Whichever way you resolve it, **say which PR you picked before spending a tool call on it.** A
+review of the wrong PR reads exactly like a review of the right one, and the reviewer cannot tell
+them apart.
 
 ## Step 0 — one statement of what is being fixed
 
@@ -532,3 +556,61 @@ because they are not real, never because the list is getting long.
 
 Write for a person who will act on it: no hedging, no restating the diff, and quantify instead of
 reaching for "large", "complex", or "significant".
+
+## Posting the review — a different artifact for a different reader
+
+**Only post when asked.** Everything above is written for the operator, who decides what to do with
+it. Publishing to the forge is outward-facing and reaches the author and the whole team, so it
+happens on an explicit instruction and never as the natural end of a review.
+
+When you are asked, **do not post sections 1–7.** That structure exists to prepare a human who has
+not read the diff. The author has read it — they wrote it. Almost all of the scaffolding is wasted
+on them or reads as a lecture:
+
+- **Cut entirely:** the unified statement, the level-and-size accounting, the lens headings, the
+  CONFIRMED/PLAUSIBLE marks, the questions section, and the teaching paragraph. The author does not
+  need the shape of the change they authored explained back to them.
+- **Keep, converted into facts they can act on:** anything you *verified* that changes what they
+  owe. "I checked gitops; nothing calls the binary you deleted" retires a risk. "The ticket asks for
+  checksums on every fetched binary and 5 remain" tells them what is still open. Both are findings.
+  The reasoning that produced them is not.
+
+**Anchor to lines. The top-level body is the exception, not the container.** A finding on the line
+it concerns arrives with its context free and threads where the discussion belongs. A finding in the
+body makes the author hunt. Put in the body only what genuinely has no line: the verdict, the one or
+two blocking items stated by reference, and anything about the PR as a whole. Aim for a body a
+reader finishes in under a minute, with the substance underneath it.
+
+**Dedupe against what is already posted, harder than you did for the operator.** The author can
+already see every bot comment. Never restate one as your own. Where you confirmed or refuted a bot
+finding, reply in *its* thread, or give it one line — a finding the author has already read twice
+costs them the same attention as a new one.
+
+**Map the verdict to the forge's event**, and say the same thing the recommendation said:
+
+| Verdict | Event |
+|---|---|
+| APPROVE | `APPROVE` |
+| APPROVE WITH NITS | `APPROVE`, with each correction on its line and the body saying merging without them is not the approval given |
+| COMMENT / ESCALATE | `COMMENT` |
+| REQUEST CHANGES | `REQUEST_CHANGES` |
+
+**Mechanics.** One API call posts the body and every inline comment as a single review, so the
+author gets one notification instead of twelve:
+
+```bash
+gh api repos/OWNER/REPO/pulls/N/reviews --method POST --input review.json
+```
+
+`review.json` carries `commit_id` (the head SHA you reviewed), `body`, `event`, and `comments[]`,
+each entry `{path, line, side: "RIGHT", body}` plus `start_line`/`start_side` for a range. Two
+things go wrong here:
+
+- **`line` is the post-image line number, and it must fall inside a diff hunk.** Derive it by
+  walking the patch and counting added and context lines — do not guess from the file on disk.
+- **Context lines inside a hunk are commentable**, which is usually the cleanest anchor for a
+  finding about code the PR only touches nearby. For a region the PR deletes outright, use
+  `side: "LEFT"` with the pre-image number, or anchor to the nearest surviving line and say where
+  you mean.
+
+Verify what landed rather than trusting the response, then give the operator the review URL.
