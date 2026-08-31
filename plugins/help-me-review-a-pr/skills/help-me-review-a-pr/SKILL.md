@@ -44,8 +44,10 @@ means the repository you are in, and the same string goes to every bundled scrip
 frequently checked out to something unrelated to the PR the user means, and it may belong to another
 session editing it right now, so the branch is a guess dressed as an answer.
 
-Name the PR in one line ("Reviewing #555, *title*") before spending a tool call on it. A review of
-the wrong PR reads exactly like a review of the right one, and the reviewer cannot tell them apart.
+If the target does not include a title, including numeric and `owner/repo#N` forms, make one initial
+metadata lookup to retrieve it. Then name the PR in one line ("Reviewing #555, *title*") before
+making any subsequent tool call. A review of the wrong PR reads exactly like a review of the right
+one, and the reviewer cannot tell them apart.
 
 ## Step 0 — one statement of what is being fixed
 

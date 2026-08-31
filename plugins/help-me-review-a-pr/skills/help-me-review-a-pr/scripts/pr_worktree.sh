@@ -108,12 +108,16 @@ case "$CMD" in
     # What the forge says this PR points at. This is the authoritative check:
     # comparing repository names cannot survive a rename (origin still spells
     # the old name, and the API redirects), while a head SHA either matches or
-    # does not. Empty when gh is absent or the call fails — a guard, not a
-    # dependency.
+    # does not. Fail closed when that authoritative SHA cannot be resolved.
     here="$(origin_slug)"
-    want=""
-    if command -v gh >/dev/null 2>&1; then
-      want="$(gh api "repos/${TARGET_SLUG:-$here}/pulls/${PR}" --jq .head.sha 2>/dev/null || true)"
+    command -v gh >/dev/null 2>&1 || {
+      echo "cannot resolve ${TARGET_SLUG:-${here:-unknown}}#${PR} head: gh is not installed" >&2
+      exit 1
+    }
+    if ! want="$(gh api "repos/${TARGET_SLUG:-$here}/pulls/${PR}" --jq '.head.sha // empty' 2>/dev/null)" ||
+       [ -z "$want" ]; then
+      echo "could not resolve ${TARGET_SLUG:-${here:-unknown}}#${PR} head from the forge" >&2
+      exit 1
     fi
 
     if [ -d "$dir" ]; then
@@ -128,15 +132,6 @@ case "$CMD" in
       echo "$dir"; exit 0
     fi
 
-    # Without gh there is nothing to verify against, so fall back to the weaker
-    # check: a target naming another repository cannot be served from here.
-    if [ -z "$want" ] && [ -n "$TARGET_SLUG" ] && [ -n "$here" ] &&
-       [ "$(printf '%s' "$TARGET_SLUG" | tr 'A-Z' 'a-z')" != "$(printf '%s' "$here" | tr 'A-Z' 'a-z')" ]; then
-      echo "target is ${TARGET_SLUG}#${PR} but this checkout's origin is ${here}" >&2
-      echo "run with --checkout <a clone of ${TARGET_SLUG}>, or review from the diff instead" >&2
-      exit 1
-    fi
-
     # Fetch into FETCH_HEAD only: writing refs/heads/* would create a branch in
     # the shared repository, which is the thing this script exists to avoid.
     git -C "$CHECKOUT" fetch -q origin "pull/${PR}/head" || {
@@ -146,7 +141,7 @@ case "$CMD" in
     # The case prose cannot catch: a bare number typed in an unrelated
     # checkout, where the fetch succeeds and hands back a plausible tree from
     # the wrong repository's PR of the same number.
-    if [ -n "$want" ] && [ "$want" != "$sha" ]; then
+    if [ "$want" != "$sha" ]; then
       echo "fetched ${sha}, but ${TARGET_SLUG:-$here}#${PR} is at ${want}" >&2
       echo "this checkout is not the PR's repository — not creating a worktree" >&2
       echo "run with --checkout <a clone of ${TARGET_SLUG:-that repository}>" >&2
